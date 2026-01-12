@@ -1,0 +1,55 @@
+# Database Expert - Expertise Template
+# This file serves as your mental model for database-related functionality
+# Run /experts:database:self-improve to populate this with your codebase's database patterns
+
+overview:
+  description: "Database schema, models, and operations for this project"
+  status: "Template - run /experts:database:self-improve to build expertise from your codebase"
+
+# Add your database tables and schema here
+schema_structure:
+  tables: []
+  # Example:
+  # - name: "users"
+  #   file: "migrations/001_users.sql"
+  #   columns:
+  #     - "id (UUID primary key)"
+  #     - "email (VARCHAR unique)"
+  #     - "created_at (TIMESTAMP)"
+
+# Add your Pydantic models here
+models:
+  location: "TODO: Add path to your models file"
+  classes: []
+  # Example:
+  # - name: "User"
+  #   fields:
+  #     - "id: UUID"
+  #     - "email: str"
+  #     - "created_at: datetime"
+
+# Add your key database operations here
+key_operations:
+  functions: []
+  # Example:
+  # - name: "create_user"
+  #   file: "database.py"
+  #   purpose: "Create a new user record"
+
+# Migration patterns
+migrations:
+  directory: "migrations/"
+  pattern: "Numbered SQL files (001_xxx.sql, 002_xxx.sql)"
+  runner: "Custom Python script or Alembic"
+
+# Best practices for this codebase
+best_practices:
+  - "Use Pydantic models for data validation"
+  - "Keep migrations idempotent (safe to run multiple times)"
+  - "Use connection pooling for production"
+
+# Key file locations
+key_files:
+  models: "TODO: Add path to your models file"
+  database: "TODO: Add path to your database operations file"
+  migrations: "TODO: Add path to your migrations directory"

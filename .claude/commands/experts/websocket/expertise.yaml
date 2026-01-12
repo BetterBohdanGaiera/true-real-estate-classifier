@@ -1,0 +1,65 @@
+# WebSocket Expert - Expertise Template
+# This file serves as your mental model for WebSocket functionality
+# Run /experts:websocket:self-improve to populate this with your codebase's WebSocket patterns
+
+overview:
+  description: "WebSocket real-time communication patterns for this project"
+  status: "Template - run /experts:websocket:self-improve to build expertise from your codebase"
+
+# WebSocket server configuration
+server:
+  framework: "TODO: Add framework (FastAPI, aiohttp, etc.)"
+  endpoint: "/ws"
+  # Example:
+  # file: "backend/main.py"
+  # lines: "100-150"
+
+# Event types your system broadcasts
+event_types: []
+  # Example:
+  # - name: "message"
+  #   direction: "server -> client"
+  #   fields: ["type", "content", "timestamp"]
+  # - name: "user_action"
+  #   direction: "client -> server"
+  #   fields: ["action", "payload"]
+
+# Connection management
+connection_management:
+  pattern: "TODO: Describe your connection handling pattern"
+  # Example:
+  # manager_class: "WebSocketManager"
+  # file: "websocket_manager.py"
+  # methods:
+  #   - "connect: Add client to active connections"
+  #   - "disconnect: Remove client from active connections"
+  #   - "broadcast: Send message to all connected clients"
+
+# Message handling
+message_handlers: []
+  # Example:
+  # - event: "subscribe"
+  #   handler: "handle_subscribe"
+  #   description: "Subscribe client to specific channel"
+
+# Broadcasting patterns
+broadcasting:
+  patterns: []
+  # Example:
+  # - name: "broadcast_to_all"
+  #   description: "Send message to all connected clients"
+  # - name: "broadcast_to_room"
+  #   description: "Send message to clients in specific room"
+
+# Best practices
+best_practices:
+  - "Handle disconnections gracefully"
+  - "Use heartbeat/ping-pong for connection health"
+  - "Serialize messages to JSON before sending"
+  - "Validate incoming messages"
+
+# Key file locations
+key_files:
+  server: "TODO: Add path to WebSocket server file"
+  manager: "TODO: Add path to WebSocket manager"
+  handlers: "TODO: Add path to message handlers"
