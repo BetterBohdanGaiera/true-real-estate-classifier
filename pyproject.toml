@@ -1,0 +1,27 @@
+[project]
+name = "classifier"
+version = "0.1.0"
+description = "True Real Estate Classifier with Telegram Agent"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.40.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "telethon>=1.42.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+bot = [
+    "python-telegram-bot>=21.0.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
