@@ -40,3 +40,15 @@ build/
 
 # App review artifacts
 app_review/
+
+# Source video/audio data (too large for git)
+data/
+
+# Knowledge base screenshots (binary files, captured in visual_analysis/)
+knowledge_base/screenshots/
+
+# Temporary video splits
+data/temp_splits/
+
+# Additional env files
+.env2
