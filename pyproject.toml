@@ -9,6 +9,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "telethon>=1.42.0",
     "rich>=13.0.0",
+    "defusedxml>=0.7.1",
+    "lxml>=6.0.2",
 ]
 
 [project.optional-dependencies]
