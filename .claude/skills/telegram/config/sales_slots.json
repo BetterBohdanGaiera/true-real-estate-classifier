@@ -1,0 +1,15 @@
+{
+  "salesperson": "Эксперт True Real Estate",
+  "timezone": "Asia/Makassar",
+  "working_hours": {
+    "start": "10:00",
+    "end": "19:00"
+  },
+  "available_hours": [10, 11, 14, 15, 16, 17, 18],
+  "slot_duration_minutes": 30,
+  "break_between_slots_minutes": 15,
+  "days_ahead": 7,
+  "include_weekends": false,
+  "blocked_dates": [],
+  "pre_booked": []
+}

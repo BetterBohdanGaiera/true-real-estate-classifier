@@ -1,9 +1,10 @@
 """
 Pydantic models for Telegram Agent.
 """
-from datetime import datetime
+from datetime import datetime, date, time
 from enum import Enum
 from typing import Literal, Optional
+from pathlib import Path
 from pydantic import BaseModel, Field
 
 
@@ -42,11 +43,38 @@ class Prospect(BaseModel):
         use_enum_values = True
 
 
+class SalesSlot(BaseModel):
+    """A time slot for sales meetings."""
+    id: str  # Format: "YYYYMMDD_HHMM"
+    date: date
+    start_time: time
+    end_time: time
+    salesperson: str = "Эксперт True Real Estate"
+    is_available: bool = True
+    booked_by: Optional[str] = None  # prospect telegram_id or None
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            time: lambda v: v.isoformat()
+        }
+
+
+class SchedulingResult(BaseModel):
+    """Result of a scheduling operation (booking or cancellation)."""
+    success: bool
+    message: str
+    slot: Optional[SalesSlot] = None
+    zoom_url: Optional[str] = None  # Zoom meeting URL if created
+    error: Optional[str] = None
+
+
 class AgentAction(BaseModel):
     """Action to take after processing a message."""
-    action: Literal["reply", "wait", "escalate"]
+    action: Literal["reply", "wait", "escalate", "schedule", "check_availability"]
     message: Optional[str] = None
     reason: Optional[str] = None  # Why this action was chosen
+    scheduling_data: Optional[dict] = None  # For scheduling actions: {"slot_id": "...", "topic": "..."}
 
 
 class AgentConfig(BaseModel):
@@ -56,6 +84,15 @@ class AgentConfig(BaseModel):
     response_delay_range: tuple[float, float] = (2.0, 5.0)  # Seconds
     max_messages_per_day_per_prospect: int = 3
     working_hours: Optional[tuple[int, int]] = None  # e.g., (9, 21) for 9am-9pm
+
+    # Fields for skill and knowledge integration
+    tone_of_voice_path: Optional[Path] = None
+    how_to_communicate_path: Optional[Path] = None
+    knowledge_base_path: Optional[Path] = None
+    sales_calendar_path: Optional[Path] = None
+    include_knowledge_base: bool = True
+    max_knowledge_tokens: int = 4000  # Token limit for KB context
+
     escalation_keywords: list[str] = Field(default_factory=lambda: [
         "call", "phone", "urgent", "срочно", "позвони", "звонок"
     ])

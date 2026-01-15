@@ -2,6 +2,7 @@
 """
 Telegram Agent Daemon.
 Long-running service that handles prospect outreach and conversations.
+Integrates with scheduling system for Zoom meeting bookings.
 """
 import asyncio
 import json
@@ -24,6 +25,9 @@ from telegram_service import TelegramService, is_private_chat
 from telegram_agent import TelegramAgent
 from prospect_manager import ProspectManager
 from models import AgentConfig, ProspectStatus
+from knowledge_loader import KnowledgeLoader
+from sales_calendar import SalesCalendar
+from scheduling_tool import SchedulingTool
 
 console = Console()
 
@@ -33,6 +37,9 @@ CONFIG_DIR = SCRIPT_DIR.parent / "config"
 PROSPECTS_FILE = CONFIG_DIR / "prospects.json"
 AGENT_CONFIG_FILE = CONFIG_DIR / "agent_config.json"
 TONE_OF_VOICE_DIR = SCRIPT_DIR.parent.parent / "tone-of-voice"
+HOW_TO_COMMUNICATE_DIR = SCRIPT_DIR.parent.parent / "how-to-communicate"
+KNOWLEDGE_BASE_DIR = SCRIPT_DIR.parent.parent.parent.parent / "knowledge_base_final"
+SALES_CALENDAR_CONFIG = CONFIG_DIR / "sales_slots.json"
 
 
 class TelegramDaemon:
@@ -44,11 +51,15 @@ class TelegramDaemon:
         self.agent = None
         self.prospect_manager = None
         self.config = None
+        self.knowledge_loader = None
+        self.sales_calendar = None
+        self.scheduling_tool = None
         self.running = False
         self.stats = {
             "messages_sent": 0,
             "messages_received": 0,
             "escalations": 0,
+            "meetings_scheduled": 0,
             "started_at": None
         }
 
@@ -74,13 +85,31 @@ class TelegramDaemon:
         prospects = self.prospect_manager.get_all_prospects()
         console.print(f"  [green]✓[/green] Prospects loaded: {len(prospects)}")
 
-        # Initialize Claude agent
+        # Initialize knowledge loader
+        if KNOWLEDGE_BASE_DIR.exists():
+            self.knowledge_loader = KnowledgeLoader(KNOWLEDGE_BASE_DIR)
+            console.print(f"  [green]✓[/green] Knowledge base loaded")
+        else:
+            console.print(f"  [yellow]⚠[/yellow] Knowledge base not found at {KNOWLEDGE_BASE_DIR}")
+
+        # Initialize sales calendar
+        self.sales_calendar = SalesCalendar(SALES_CALENDAR_CONFIG)
+        available_slots = len(self.sales_calendar.get_available_slots())
+        console.print(f"  [green]✓[/green] Sales calendar initialized ({available_slots} slots available)")
+
+        # Initialize scheduling tool
+        self.scheduling_tool = SchedulingTool(self.sales_calendar)
+        console.print(f"  [green]✓[/green] Scheduling tool ready")
+
+        # Initialize Claude agent with ALL skills
         self.agent = TelegramAgent(
             tone_of_voice_path=TONE_OF_VOICE_DIR,
+            how_to_communicate_path=HOW_TO_COMMUNICATE_DIR,
+            knowledge_base_path=KNOWLEDGE_BASE_DIR,
             config=self.config,
             agent_name=self.config.agent_name
         )
-        console.print(f"  [green]✓[/green] Claude agent ready")
+        console.print(f"  [green]✓[/green] Claude agent ready (with tone-of-voice + how-to-communicate + knowledge base)")
 
         # Register message handler
         self._register_handlers()
@@ -166,7 +195,69 @@ class TelegramDaemon:
 
                 console.print(f"[dim]Agent decision: {action.action} - {action.reason}[/dim]")
 
-                if action.action == "reply" and action.message:
+                # Handle check_availability action
+                if action.action == "check_availability":
+                    # Get available slots
+                    availability_text = self.scheduling_tool.get_available_times(days=3)
+
+                    # Send availability to user
+                    await self.service.send_message(
+                        prospect.telegram_id,
+                        availability_text
+                    )
+
+                    console.print(f"[cyan]→ Sent availability to {prospect.name}[/cyan]")
+
+                    # Update prospect to show we're in scheduling mode
+                    self.prospect_manager.update_status(
+                        prospect.telegram_id,
+                        ProspectStatus.IN_CONVERSATION
+                    )
+
+                # Handle schedule action
+                elif action.action == "schedule" and action.scheduling_data:
+                    slot_id = action.scheduling_data.get("slot_id")
+                    topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
+
+                    if not slot_id:
+                        console.print(f"[red]Schedule action missing slot_id[/red]")
+                        return
+
+                    # Book the meeting
+                    result = self.scheduling_tool.book_zoom_call(
+                        slot_id=slot_id,
+                        prospect=prospect,
+                        topic=topic
+                    )
+
+                    if result.success:
+                        # Send confirmation with Zoom link
+                        confirmation = f"{result.message}\n\n🔗 Ссылка на встречу: {result.zoom_url}"
+                        await self.service.send_message(
+                            prospect.telegram_id,
+                            confirmation
+                        )
+
+                        # Update prospect status
+                        self.prospect_manager.update_status(
+                            prospect.telegram_id,
+                            ProspectStatus.ZOOM_SCHEDULED
+                        )
+
+                        # Update stats
+                        self.stats["meetings_scheduled"] += 1
+
+                        console.print(f"[green]✓ Meeting scheduled for {prospect.name}: {slot_id}[/green]")
+                    else:
+                        # Send error message
+                        await self.service.send_message(
+                            prospect.telegram_id,
+                            result.message
+                        )
+                        console.print(f"[red]✗ Scheduling failed: {result.error}[/red]")
+
+                # Handle reply action
+                elif action.action == "reply" and action.message:
                     # Send response
                     result = await self.service.send_message(
                         prospect.telegram_id,
@@ -184,6 +275,7 @@ class TelegramDaemon:
                     else:
                         console.print(f"[red]Failed to send: {result.get('error')}[/red]")
 
+                # Handle escalate action
                 elif action.action == "escalate":
                     self.stats["escalations"] += 1
                     console.print(f"[yellow]⚠ Escalated: {action.reason}[/yellow]")
@@ -311,6 +403,7 @@ class TelegramDaemon:
 
         table.add_row("Messages Sent", str(self.stats["messages_sent"]))
         table.add_row("Messages Received", str(self.stats["messages_received"]))
+        table.add_row("Meetings Scheduled", str(self.stats["meetings_scheduled"]))
         table.add_row("Escalations", str(self.stats["escalations"]))
 
         if self.prospect_manager:
@@ -368,6 +461,7 @@ class TelegramDaemon:
             f"[bold]Final Stats[/bold]\n"
             f"Messages Sent: {self.stats['messages_sent']}\n"
             f"Messages Received: {self.stats['messages_received']}\n"
+            f"Meetings Scheduled: {self.stats['meetings_scheduled']}\n"
             f"Escalations: {self.stats['escalations']}",
             title="Session Summary"
         ))
