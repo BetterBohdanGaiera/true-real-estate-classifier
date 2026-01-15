@@ -230,6 +230,17 @@ class ProspectManager:
         prospect.status = status
         self._save_prospects()
 
+    def update_prospect_email(self, telegram_id: int | str, email: str) -> None:
+        """Update prospect's email address for meeting invite."""
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            raise ValueError(f"Prospect {telegram_id} not found")
+
+        prospect.email = email
+        self._save_prospects()
+
     def get_conversation_context(self, telegram_id: int | str, limit: int = 20) -> str:
         """Get formatted conversation history for LLM context."""
         key = self._normalize_id(telegram_id)

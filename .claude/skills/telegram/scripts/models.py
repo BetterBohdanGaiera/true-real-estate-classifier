@@ -38,6 +38,7 @@ class Prospect(BaseModel):
     message_count: int = 0  # Total messages sent by agent
     conversation_history: list[ConversationMessage] = Field(default_factory=list)
     notes: str = ""  # Additional notes
+    email: Optional[str] = None  # Client email for meeting invite
 
     class Config:
         use_enum_values = True

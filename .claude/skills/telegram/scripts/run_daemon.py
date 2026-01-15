@@ -217,25 +217,36 @@ class TelegramDaemon:
                 # Handle schedule action
                 elif action.action == "schedule" and action.scheduling_data:
                     slot_id = action.scheduling_data.get("slot_id")
+                    client_email = action.scheduling_data.get("email", "")
                     topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
 
                     if not slot_id:
                         console.print(f"[red]Schedule action missing slot_id[/red]")
                         return
 
-                    # Book the meeting
-                    result = self.scheduling_tool.book_zoom_call(
+                    # STRICT: Email is REQUIRED for booking
+                    if not client_email or not client_email.strip():
+                        error_msg = "Для записи на встречу нужен email. На какой адрес отправить приглашение?"
+                        await self.service.send_message(prospect.telegram_id, error_msg)
+                        console.print(f"[yellow]⚠ Schedule rejected - no email provided[/yellow]")
+                        return
+
+                    # Store email in prospect record
+                    self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
+
+                    # Book the meeting (mock mode - no actual Zoom call)
+                    result = self.scheduling_tool.book_meeting(
                         slot_id=slot_id,
                         prospect=prospect,
+                        client_email=client_email.strip(),
                         topic=topic
                     )
 
                     if result.success:
-                        # Send confirmation with Zoom link
-                        confirmation = f"{result.message}\n\n🔗 Ссылка на встречу: {result.zoom_url}"
+                        # Send confirmation (no Zoom link in mock mode)
                         await self.service.send_message(
                             prospect.telegram_id,
-                            confirmation
+                            result.message
                         )
 
                         # Update prospect status
@@ -247,7 +258,7 @@ class TelegramDaemon:
                         # Update stats
                         self.stats["meetings_scheduled"] += 1
 
-                        console.print(f"[green]✓ Meeting scheduled for {prospect.name}: {slot_id}[/green]")
+                        console.print(f"[green]✓ Meeting scheduled for {prospect.name}: {slot_id} (email: {client_email})[/green]")
                     else:
                         # Send error message
                         await self.service.send_message(

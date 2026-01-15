@@ -118,12 +118,26 @@ class TelegramAgent:
         scheduling_instructions = """
 ## Назначение Zoom-звонка
 
-Когда клиент готов к звонку или вы собрали BANT:
-- Предложи конкретные слоты: "Завтра в 14:00 или 16:00?"
-- Используй action="check_availability" чтобы проверить свободные слоты
-- Когда клиент выбрал время, используй action="schedule" с scheduling_data={"slot_id": "YYYYMMDD_HHMM"}
+КРИТИЧЕСКИ ВАЖНО: Без email клиента НЕВОЗМОЖНО назначить встречу!
 
-Важно: ВСЕГДА предлагай конкретные даты и время, не спрашивай "когда вам удобно".
+Порядок действий:
+1. СНАЧАЛА спроси email: "На какой email отправить приглашение на Zoom?"
+2. ДОЖДИСЬ ответа с email адресом
+3. Только ПОСЛЕ получения email используй action="check_availability" для показа слотов
+4. Когда клиент выбрал время, используй action="schedule" с scheduling_data={"slot_id": "YYYYMMDD_HHMM", "email": "client@email.com"}
+
+ЗАПРЕЩЕНО:
+- Показывать слоты БЕЗ email
+- Использовать action="schedule" БЕЗ email в scheduling_data
+- Спрашивать "когда удобно" - ВСЕГДА предлагай конкретное время
+
+Пример правильного flow:
+Клиент: "Хочу созвониться"
+Ты: "Отлично! На какой email отправить приглашение?"
+Клиент: "ivan@mail.ru"
+Ты: [action=check_availability] → показать слоты
+Клиент: "Давайте завтра в 14:00"
+Ты: [action=schedule, scheduling_data={slot_id, email}]
 """
 
         # Build how-to-communicate section
