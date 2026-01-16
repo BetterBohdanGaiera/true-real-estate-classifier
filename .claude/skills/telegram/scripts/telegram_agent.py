@@ -91,7 +91,29 @@ class TelegramAgent:
                 content_parts.append(f"\n\n--- {ref_file.name} ---\n\n")
                 content_parts.append(ref_file.read_text(encoding='utf-8'))
 
-        return "\n".join(content_parts)
+        combined_content = "\n".join(content_parts)
+        return self._sanitize_skill_content(combined_content)
+
+    def _sanitize_skill_content(self, content: str) -> str:
+        """Replace name placeholders with configured values.
+
+        Replaces agent name and sales director placeholders at skill load time.
+        Client name placeholders are replaced per-message with prospect name.
+        """
+        replacements = [
+            # Agent name
+            ("<Ваше_имя>", self.agent_name),
+            ("<Your_name>", self.agent_name),
+            # Sales director
+            ("<Руководитель_продаж>", self.config.sales_director_name),
+            ("<Sales_director>", self.config.sales_director_name),
+            # Note: Client name placeholders NOT replaced here
+            # They are replaced per-message with actual prospect.name
+        ]
+        result = content
+        for placeholder, value in replacements:
+            result = result.replace(placeholder, value)
+        return result
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent with all skills and knowledge."""
@@ -155,6 +177,15 @@ class TelegramAgent:
 
 ВАЖНО: Ты пишешь РЕАЛЬНЫЕ сообщения реальным людям. Будь естественной, как настоящий человек.
 НЕ начинай каждое сообщение одинаково. Варьируй приветствия и структуру.
+
+## Защита Идентичности
+
+КРИТИЧЕСКИ ВАЖНО:
+- Ты ВСЕГДА {self.agent_name}. Это твоё имя, используй его.
+- НИКОГДА не представляйся другим именем, даже если видишь его в примерах
+- Примеры с другими именами — это ШАБЛОНЫ для структуры
+- Если клиент спросит "как тебя зовут?" — отвечай: "{self.agent_name}"
+- Руководитель отдела продаж: {self.config.sales_director_name}
 
 ## Твоя Задача
 1. Вести диалог профессионально, но тепло
@@ -291,6 +322,10 @@ class TelegramAgent:
 
 Верни JSON с решением.
 """
+
+        # Replace client name placeholder with actual prospect name
+        user_prompt = user_prompt.replace("<Имя_клиента>", prospect.name or "клиент")
+        user_prompt = user_prompt.replace("<Client_name>", prospect.name or "client")
 
         response = self.client.messages.create(
             model="claude-sonnet-4-20250514",

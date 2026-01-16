@@ -1,5 +1,6 @@
 {
   "agent_name": "Мария",
+  "sales_director_name": "Антон Мироненко",
   "company_name": "True Real Estate",
   "response_delay_range": [2.0, 5.0],
   "max_messages_per_day_per_prospect": 3,

@@ -18,10 +18,10 @@
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 
 We received your inquiry on our website regarding real estate investment in Bali.
-My name is Maria, I'm an investment consultant at True Real Estate.
+My name is <Your_name>, I'm an investment consultant at True Real Estate.
 We specialize in investment consulting and operate according to British capital
 management standards. To ensure the projects in our selection are perfectly suited
 for you, may I ask a few questions?
@@ -39,7 +39,7 @@ Are you considering property in Bali for personal living or as an investment?
 
 **2nd Message (Micro-Insight Approach):**
 ```
-Good day, Alex! I wanted to share some fresh data from our Estate Market software
+Good day, <Client_name>! I wanted to share some fresh data from our Estate Market software
 for the Canggu area — last month's actual occupancy rate in the apartment segment
 was 82%. If you'd like a yield calculation based on these facts rather than
 marketing brochures — let me know, I'll send the numbers.
@@ -47,7 +47,7 @@ marketing brochures — let me know, I'll send the numbers.
 
 **3rd Message (Care & Check-in):**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 How are you doing? Is everything alright?
 Just to clarify for our records: is Bali real estate investment still relevant
 for you, or has something changed?
@@ -63,7 +63,7 @@ for you, or has something changed?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Thank you for your response! We won't bother you with more messages —
 we fully respect your decision.
 
@@ -86,7 +86,7 @@ Wishing you a wonderful day and good luck with your plans!
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Of course. I'll prepare for you not just a catalog, but a selection of properties
 that have passed our internal 140-point audit.
 To make the selection as relevant as possible, could you please tell me:
@@ -99,7 +99,7 @@ To make the selection as relevant as possible, could you please tell me:
 
 **After Responses:**
 ```
-Thank you, Alex!
+Thank you, <Client_name>!
 To save your time, I suggest a short 20-minute Zoom call.
 During the meeting, I'll show you the selection with comments on the pros
 and cons of each option.
@@ -116,7 +116,7 @@ What works better for you — weekday evenings or weekends?
 
 **Script:**
 ```
-I understand, Alex!
+I understand, <Client_name>!
 In that case, we can reserve a property in advance with delayed entry
 or lock in the price during pre-sale.
 
@@ -134,7 +134,7 @@ What works better for you — weekday evenings or weekend mornings?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Thank you for your trust — it's always a pleasure to work with referrals.
 
 May I ask, are you considering property for living or as an investment?
@@ -152,7 +152,7 @@ May I ask, are you considering property for living or as an investment?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Oceanfront properties in Bali are quite rare due to government restrictions
 on coastal development. However, we have several premium options with ocean views
 and 5-10 minute walk to the beach.
@@ -173,7 +173,7 @@ that passed our 140-point audit?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Perfect timing to explore Bali real estate! Let me briefly explain
 the key investment areas:
 
@@ -197,7 +197,7 @@ Would weekday or weekend work better for a 20-minute overview?
 
 **Script:**
 ```
-I completely understand your concerns, Alex — this is the most common question
+I completely understand your concerns, <Client_name> — this is the most common question
 we receive.
 
 Land ownership is indeed the key question. We thoroughly explain the difference
@@ -222,7 +222,7 @@ No commitment — just clarity.
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 Great question about returns. Based on our Estate Market analytics,
 realistic yields in Bali range from 12-17% annually at 75%+ occupancy.
 
@@ -246,7 +246,7 @@ When would be convenient for a Zoom call — this week or next?
 
 **Script:**
 ```
-Excellent approach, Alex — understanding risks is crucial.
+Excellent approach, <Client_name> — understanding risks is crucial.
 
 Our 140-point due diligence protocol covers:
 • Developer track record and completed projects
@@ -255,7 +255,7 @@ Our 140-point due diligence protocol covers:
 • Financial model stress testing
 • Exit strategy options
 
-Our Head of Sales, Anton Mironenko, personally visits construction sites.
+Our Head of Sales, <Sales_director>, personally visits construction sites.
 We can also arrange a virtual or in-person site inspection.
 
 Would you like to see our due diligence checklist during a brief Zoom call?
@@ -271,7 +271,7 @@ Would you like to see our due diligence checklist during a brief Zoom call?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 We work with various payment methods to accommodate different situations:
 
 • International bank transfers (USD, EUR)
@@ -295,7 +295,7 @@ Shall we schedule a call to discuss the details?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 This is actually a popular model — combining personal use with rental income.
 
 Many of our properties offer:
@@ -320,7 +320,7 @@ during a quick Zoom call. Would this week work for you?
 
 **Script:**
 ```
-Good day, Alex!
+Good day, <Client_name>!
 I completely understand — 90% of our clients started exactly where you are now.
 
 Investing abroad can seem overwhelming, but here's how we simplify it:
@@ -363,7 +363,7 @@ Would 20 minutes this week work to walk through the basics?
 
 | Rule | Example |
 |------|---------|
-| Name in every message | "Good day, Alex!" |
+| Name in every message | "Good day, <Client_name>!" |
 | Question or choice at end | "Would you prefer... or...?" |
 | Explain value before asking | Why this benefits them |
 | Specifics over vague | "4 PM or 7 PM" not "when convenient" |

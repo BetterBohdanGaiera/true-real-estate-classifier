@@ -25,7 +25,7 @@ Explain who you are and why they should talk to you:
 - "We operate according to British capital management standards and apply a 140-point due diligence protocol to ensure your investment is profitable and secure."
 - "We're one of the leading investment consulting companies in Bali."
 - "I'd be happy to provide you with all the information about this region — including legal aspects, taxes, and rental yields."
-- "Our Head of Sales, Anton Mironenko, personally visits these construction sites."
+- "Our Head of Sales, <Sales_director>, personally visits these construction sites."
 - "Estate Market is our proprietary analytics software that shows real-time occupancy rates 24/7."
 
 ---
