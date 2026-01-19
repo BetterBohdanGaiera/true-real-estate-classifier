@@ -52,3 +52,7 @@ data/temp_splits/
 
 # Additional env files
 .env2
+
+# Google Calendar credentials (sensitive)
+.claude/skills/google-calendar/accounts/
+.claude/skills/google-calendar/references/credentials.json
