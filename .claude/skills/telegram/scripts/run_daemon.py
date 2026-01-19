@@ -24,10 +24,16 @@ from telegram_fetch import get_client
 from telegram_service import TelegramService, is_private_chat
 from telegram_agent import TelegramAgent
 from prospect_manager import ProspectManager
-from models import AgentConfig, ProspectStatus
+from models import AgentConfig, ProspectStatus, ScheduledActionType
 from knowledge_loader import KnowledgeLoader
 from sales_calendar import SalesCalendar
 from scheduling_tool import SchedulingTool
+from scheduler_service import SchedulerService
+from scheduled_action_manager import (
+    create_scheduled_action,
+    cancel_pending_for_prospect,
+    get_by_id as get_action_by_id,
+)
 
 console = Console()
 
@@ -54,12 +60,15 @@ class TelegramDaemon:
         self.knowledge_loader = None
         self.sales_calendar = None
         self.scheduling_tool = None
+        self.scheduler_service = None
+        self.action_manager = None  # Not used directly, but signals intent
         self.running = False
         self.stats = {
             "messages_sent": 0,
             "messages_received": 0,
             "escalations": 0,
             "meetings_scheduled": 0,
+            "scheduled_followups": 0,
             "started_at": None
         }
 
@@ -100,6 +109,15 @@ class TelegramDaemon:
         # Initialize scheduling tool
         self.scheduling_tool = SchedulingTool(self.sales_calendar)
         console.print(f"  [green]✓[/green] Scheduling tool ready")
+
+        # Initialize scheduled action manager (imports are module-level functions)
+        console.print(f"  [green]✓[/green] Scheduled action manager ready")
+
+        # Initialize scheduler service
+        self.scheduler_service = SchedulerService(
+            execute_callback=self.execute_scheduled_action
+        )
+        console.print(f"  [green]✓[/green] Scheduler service initialized")
 
         # Initialize Claude agent with ALL skills
         self.agent = TelegramAgent(
@@ -170,6 +188,17 @@ class TelegramDaemon:
                 event.id,
                 event.text
             )
+
+            # Cancel pending follow-ups when client responds
+            try:
+                cancelled = await cancel_pending_for_prospect(
+                    str(prospect.telegram_id),
+                    reason="client_responded"
+                )
+                if cancelled > 0:
+                    console.print(f"[dim]Cancelled {cancelled} pending follow-up(s)[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not cancel actions: {e}[/yellow]")
 
             # Check rate limits
             messages_today = self.prospect_manager.get_messages_sent_today(prospect.telegram_id)
@@ -266,6 +295,92 @@ class TelegramDaemon:
                             result.message
                         )
                         console.print(f"[red]✗ Scheduling failed: {result.error}[/red]")
+
+                # Handle schedule_followup action
+                elif action.action == "schedule_followup" and action.scheduling_data:
+                    try:
+                        # Parse scheduled time from ISO 8601
+                        follow_up_time_str = action.scheduling_data.get("follow_up_time")
+                        scheduled_for = datetime.fromisoformat(follow_up_time_str)
+
+                        # Create scheduled action in database
+                        scheduled_action = await create_scheduled_action(
+                            prospect_id=str(prospect.telegram_id),
+                            action_type=ScheduledActionType.FOLLOW_UP,
+                            scheduled_for=scheduled_for,
+                            payload={
+                                "follow_up_intent": action.scheduling_data.get("follow_up_intent"),
+                                "reason": action.scheduling_data.get("reason"),
+                                "original_context_snapshot": context[:1000]  # For reference, not for sending
+                            }
+                        )
+
+                        # Schedule with APScheduler
+                        await self.scheduler_service.schedule_action(scheduled_action)
+
+                        # Update stats
+                        self.stats["scheduled_followups"] += 1
+
+                        console.print(f"[cyan]Scheduled follow-up for {prospect.name} at {scheduled_for.strftime('%Y-%m-%d %H:%M')}[/cyan]")
+
+                        # Always send confirmation - use agent's text or generate fallback
+                        confirmation = action.message
+                        if not confirmation:
+                            # Calculate human-friendly time description
+                            import pytz
+                            bali_tz = pytz.timezone("Asia/Makassar")
+                            now = datetime.now(bali_tz)
+                            scheduled_local = scheduled_for.astimezone(bali_tz)
+
+                            delta = scheduled_local - now
+                            minutes = int(delta.total_seconds() / 60)
+
+                            # Generate natural time expression
+                            if minutes <= 5:
+                                time_expr = "через 5 минут"
+                            elif minutes <= 10:
+                                time_expr = "минут через 10"
+                            elif minutes <= 15:
+                                time_expr = "минут через 15"
+                            elif minutes <= 30:
+                                time_expr = "через полчаса"
+                            elif minutes <= 60:
+                                time_expr = "через час"
+                            elif minutes <= 120:
+                                time_expr = "через пару часов"
+                            elif scheduled_local.date() == now.date():
+                                # Same day - round to nearest half hour
+                                rounded_hour = scheduled_local.hour
+                                rounded_min = 30 if scheduled_local.minute >= 15 and scheduled_local.minute < 45 else 0
+                                if scheduled_local.minute >= 45:
+                                    rounded_hour += 1
+                                    rounded_min = 0
+                                time_expr = f"около {rounded_hour}:{rounded_min:02d}"
+                            elif (scheduled_local.date() - now.date()).days == 1:
+                                time_expr = "завтра"
+                            else:
+                                # Fallback to day of week
+                                days_ru = ["в понедельник", "во вторник", "в среду", "в четверг", "в пятницу", "в субботу", "в воскресенье"]
+                                time_expr = days_ru[scheduled_local.weekday()]
+
+                            confirmation = f"Хорошо, напишу {time_expr}! 👍"
+
+                        result = await self.service.send_message(
+                            prospect.telegram_id,
+                            confirmation
+                        )
+
+                        if result.get("sent"):
+                            self.stats["messages_sent"] += 1
+                            self.prospect_manager.record_agent_message(
+                                prospect.telegram_id,
+                                result["message_id"],
+                                confirmation
+                            )
+                            console.print(f"[green]-> Confirmation sent to {prospect.name}[/green]")
+
+                    except Exception as e:
+                        console.print(f"[red]Failed to schedule follow-up: {e}[/red]")
 
                 # Handle reply action
                 elif action.action == "reply" and action.message:
@@ -402,6 +517,87 @@ class TelegramDaemon:
             except Exception as e:
                 console.print(f"[red]Error with follow-up for {prospect.name}: {e}[/red]")
 
+    async def execute_scheduled_action(self, action_from_scheduler):
+        """
+        Execute a scheduled action when it's due.
+
+        Called by SchedulerService when a scheduled time arrives.
+
+        Args:
+            action_from_scheduler: ScheduledAction object from scheduler
+        """
+        try:
+            # Fetch fresh action from database to verify it wasn't cancelled
+            action = await get_action_by_id(action_from_scheduler.id)
+
+            if not action:
+                console.print(f"[yellow]Scheduled action {action_from_scheduler.id} not found[/yellow]")
+                return
+
+            # Check if already executed or cancelled
+            if action.status != "pending":
+                console.print(f"[dim]Skipping {action.status} action {action.id}[/dim]")
+                return
+
+            # Get prospect
+            prospect = self.prospect_manager.get_prospect(action.prospect_id)
+            if not prospect:
+                console.print(f"[yellow]Prospect {action.prospect_id} not found for scheduled action[/yellow]")
+                return
+
+            # Pre-execution checks
+
+            # Check if human has taken over
+            if self.prospect_manager.is_human_active(prospect.telegram_id):
+                await cancel_pending_for_prospect(
+                    action.prospect_id,
+                    reason="human_active"
+                )
+                console.print(f"[yellow]Cancelled action for {prospect.name} - human is active[/yellow]")
+                return
+
+            # Always regenerate message fresh using current context + stored intent
+            follow_up_intent = action.payload.get("follow_up_intent") or action.payload.get("message_template", "")  # Backward compat
+            original_reason = action.payload.get("reason", "scheduled follow-up")
+
+            # Get fresh conversation context
+            context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+
+            # Generate contextual follow-up with intent guidance
+            response = await self.agent.generate_follow_up(
+                prospect,
+                context,
+                follow_up_intent=follow_up_intent
+            )
+
+            if response.action == "reply" and response.message:
+                message = response.message
+            elif response.action == "wait":
+                console.print(f"[yellow]Agent decided not to follow up with {prospect.name}: {response.reason}[/yellow]")
+                return
+            else:
+                console.print(f"[yellow]Unexpected action from follow-up generation: {response.action}[/yellow]")
+                return
+
+            # Send message
+            result = await self.service.send_message(prospect.telegram_id, message)
+
+            if result.get("sent"):
+                self.stats["messages_sent"] += 1
+                self.prospect_manager.record_agent_message(
+                    prospect.telegram_id,
+                    result["message_id"],
+                    message
+                )
+                console.print(f"[green]Scheduled follow-up sent to {prospect.name}[/green]")
+            else:
+                console.print(f"[red]Failed to send scheduled message: {result.get('error')}[/red]")
+
+        except Exception as e:
+            console.print(f"[red]Error executing scheduled action: {e}[/red]")
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
     def _create_status_table(self) -> Table:
         """Create a status table for display."""
         table = Table(title="Telegram Agent Status")
@@ -415,6 +611,7 @@ class TelegramDaemon:
         table.add_row("Messages Sent", str(self.stats["messages_sent"]))
         table.add_row("Messages Received", str(self.stats["messages_received"]))
         table.add_row("Meetings Scheduled", str(self.stats["meetings_scheduled"]))
+        table.add_row("Scheduled Follow-ups", str(self.stats.get("scheduled_followups", 0)))
         table.add_row("Escalations", str(self.stats["escalations"]))
 
         if self.prospect_manager:
@@ -434,6 +631,10 @@ class TelegramDaemon:
             "Press Ctrl+C to stop",
             title="Status"
         ))
+
+        # Start scheduler
+        await self.scheduler_service.start()
+        console.print("[green]Scheduler started and ready[/green]")
 
         # Initial processing
         await self.process_new_prospects()
@@ -464,6 +665,11 @@ class TelegramDaemon:
         self.running = False
         console.print("[yellow]Shutting down...[/yellow]")
 
+        # Stop scheduler
+        if self.scheduler_service:
+            await self.scheduler_service.stop()
+            console.print("[green]Scheduler stopped[/green]")
+
         if self.client:
             await self.client.disconnect()
             console.print("[green]Disconnected from Telegram[/green]")
@@ -473,6 +679,7 @@ class TelegramDaemon:
             f"Messages Sent: {self.stats['messages_sent']}\n"
             f"Messages Received: {self.stats['messages_received']}\n"
             f"Meetings Scheduled: {self.stats['meetings_scheduled']}\n"
+            f"Scheduled Follow-ups: {self.stats.get('scheduled_followups', 0)}\n"
             f"Escalations: {self.stats['escalations']}",
             title="Session Summary"
         ))

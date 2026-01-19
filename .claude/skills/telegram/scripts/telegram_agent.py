@@ -6,9 +6,11 @@ Supports multiple skills (tone-of-voice, how-to-communicate) and
 knowledge base integration for context-aware responses.
 """
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import pytz
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -20,6 +22,46 @@ from knowledge_loader import KnowledgeLoader
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent
 load_dotenv(PROJECT_ROOT / '.env')
 load_dotenv()  # Also try current directory
+
+# Bali timezone for time calculations
+BALI_TIMEZONE = "Asia/Makassar"  # UTC+8, no DST
+
+# Tool definition for Claude API
+SCHEDULE_FOLLOWUP_TOOL = {
+    "name": "schedule_followup",
+    "description": """Schedule a follow-up message to be sent at a specific time in the future.
+
+Use this tool when the client asks to be contacted later with phrases like:
+- "напиши через 2 часа" (write in 2 hours)
+- "свяжись завтра" (contact tomorrow)
+- "в воскресенье" (on Sunday)
+- "через неделю" (in a week)
+
+Parse the time expression from the client's message and convert it to an exact datetime.
+
+IMPORTANT:
+- Always confirm the scheduled time to the client in your response text
+- Use ISO 8601 format for follow_up_time (e.g., "2026-01-20T10:00:00+08:00")
+- The follow_up_intent should describe WHAT to follow up about, not the exact message""",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "follow_up_time": {
+                "type": "string",
+                "description": "ISO 8601 datetime when to send the follow-up (e.g., '2026-01-20T10:00:00+08:00')"
+            },
+            "follow_up_intent": {
+                "type": "string",
+                "description": "Brief description of what to follow up about (e.g., 'check if still interested in Canggu villa', 'remind about budget discussion'). NOT the exact message."
+            },
+            "reason": {
+                "type": "string",
+                "description": "Brief explanation of why this follow-up is scheduled"
+            }
+        },
+        "required": ["follow_up_time", "follow_up_intent", "reason"]
+    }
+}
 
 
 class TelegramAgent:
@@ -115,6 +157,12 @@ class TelegramAgent:
             result = result.replace(placeholder, value)
         return result
 
+    def _get_current_bali_time(self) -> str:
+        """Get current time in Bali timezone (UTC+8) as formatted string."""
+        bali_tz = pytz.timezone(BALI_TIMEZONE)
+        now_bali = datetime.now(bali_tz)
+        return now_bali.strftime("%Y-%m-%d %H:%M:%S %Z")
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt for the agent with all skills and knowledge."""
         # Load tone of voice skill
@@ -136,8 +184,9 @@ class TelegramAgent:
 {master_cheatsheet}
 """
 
-        # Build scheduling instructions
-        scheduling_instructions = """
+        # Build scheduling instructions with current time
+        current_bali_time = self._get_current_bali_time()
+        scheduling_instructions = f"""
 ## Назначение Zoom-звонка
 
 КРИТИЧЕСКИ ВАЖНО: Без email клиента НЕВОЗМОЖНО назначить встречу!
@@ -146,7 +195,7 @@ class TelegramAgent:
 1. СНАЧАЛА спроси email: "На какой email отправить приглашение на Zoom?"
 2. ДОЖДИСЬ ответа с email адресом
 3. Только ПОСЛЕ получения email используй action="check_availability" для показа слотов
-4. Когда клиент выбрал время, используй action="schedule" с scheduling_data={"slot_id": "YYYYMMDD_HHMM", "email": "client@email.com"}
+4. Когда клиент выбрал время, используй action="schedule" с scheduling_data={{"slot_id": "YYYYMMDD_HHMM", "email": "client@email.com"}}
 
 ЗАПРЕЩЕНО:
 - Показывать слоты БЕЗ email
@@ -159,7 +208,40 @@ class TelegramAgent:
 Клиент: "ivan@mail.ru"
 Ты: [action=check_availability] → показать слоты
 Клиент: "Давайте завтра в 14:00"
-Ты: [action=schedule, scheduling_data={slot_id, email}]
+Ты: [action=schedule, scheduling_data={{slot_id, email}}]
+
+## Планирование follow-up
+
+Текущее время (Бали, UTC+8): {current_bali_time}
+
+Когда клиент просит связаться позже, используй tool schedule_followup:
+- "напиши через 2 часа" → schedule_followup с временем +2 часа от текущего
+- "завтра" → schedule_followup на завтра 10:00
+- "в воскресенье" → ближайшее воскресенье 10:00
+- "через неделю" → +7 дней, 10:00
+
+ОБЯЗАТЕЛЬНО:
+1. Подтверди клиенту время в тексте ответа: "Хорошо, напишу вам [когда]!"
+2. Вызови schedule_followup с точным временем в ISO 8601 формате
+3. В follow_up_intent опиши О ЧЁМ напомнить (не сам текст сообщения!)
+
+Пример follow_up_intent:
+- "уточнить интерес к вилле в Чангу после паузы"
+- "напомнить о консультации по финансам"
+- "проверить готовность к Zoom звонку"
+
+ВАЖНО: follow_up сообщения будут генерироваться ЗАНОВО в момент отправки,
+с учётом актуального контекста разговора. Укажи только намерение.
+
+КРИТИЧЕСКИ ВАЖНО для подтверждения времени:
+- НИКОГДА не пиши точное время типа "18:27" или "19.01 в 14:43"
+- ВСЕГДА повторяй формулировку клиента: "через 5 минут", "через час", "завтра"
+- Люди НЕ говорят "напишу в 18:27" — они говорят "напишу минут через 5"
+
+Примеры подтверждений:
+- "напиши через 5 минут" → "Хорошо, напишу через 5 минут!"
+- "свяжись завтра" → "Отлично, напишу завтра!"
+- "через час" → "Хорошо, через час напишу!"
 """
 
         # Build how-to-communicate section
@@ -207,6 +289,27 @@ class TelegramAgent:
 - Жалобы или негатив → верни action="escalate"
 - Спам или нерелевантные сообщения → верни action="wait"
 
+## Когда ПОДОЖДАТЬ (action="wait")
+
+Если клиент отправил короткое подтверждение БЕЗ новой информации:
+- "ок", "ok", "хорошо", "понял", "ладно", "принял", "да", "угу", "ага"
+- Эмодзи: 👍, 👌, ✅, 🙏, 😊
+- Просто подтверждение получения (без вопроса или деталей)
+
+В таких случаях:
+- НЕ отвечай сразу, верни action="wait"
+- Дай клиенту время написать следующее сообщение
+- Особенно если ты только что задала вопрос и ждёшь ответа
+
+Пример:
+Ты: "Какой у вас бюджет на покупку?"
+Клиент: "ок, сейчас посмотрю"
+→ action="wait" (клиент подтвердил, что ответит - жди)
+
+Ты: "Какой у вас бюджет на покупку?"
+Клиент: "около 500к"
+→ action="reply" (это ответ, продолжай диалог)
+
 {scheduling_instructions}
 
 ## Тон Голоса (КАК общаться)
@@ -218,7 +321,7 @@ class TelegramAgent:
 {knowledge_context}
 
 ## Формат Ответа
-Отвечай ТОЛЬКО в формате JSON:
+Для обычных действий отвечай в формате JSON:
 {{
     "action": "reply" | "wait" | "escalate" | "check_availability" | "schedule",
     "message": "текст сообщения для клиента (если action=reply)",
@@ -226,7 +329,10 @@ class TelegramAgent:
     "scheduling_data": {{"slot_id": "YYYYMMDD_HHMM"}} (только если action=schedule)
 }}
 
-НЕ добавляй ничего до или после JSON.
+Для планирования follow-up используй tool schedule_followup (не JSON!).
+При использовании tool schedule_followup добавь текстовое подтверждение клиенту.
+
+НЕ добавляй ничего до или после JSON (если не используешь tools).
 """
 
         return prompt
@@ -253,10 +359,11 @@ class TelegramAgent:
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=self.system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            messages=[{"role": "user", "content": user_prompt}],
+            tools=[SCHEDULE_FOLLOWUP_TOOL]
         )
 
-        return self._parse_response(response.content[0].text)
+        return self._parse_response(response.content)
 
     async def generate_response(
         self,
@@ -296,7 +403,7 @@ class TelegramAgent:
             if knowledge_context:
                 knowledge_context = f"\n\n## Релевантная информация из базы знаний:\n\n{knowledge_context}\n"
 
-        user_prompt = f"""Клиент написал сообщение. Нужно ответить.
+        user_prompt = f"""Клиент написал сообщение. Проанализируй и реши, нужно ли отвечать.
 
 Информация о клиенте:
 - Имя: {prospect.name}
@@ -331,19 +438,39 @@ class TelegramAgent:
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=self.system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            messages=[{"role": "user", "content": user_prompt}],
+            tools=[SCHEDULE_FOLLOWUP_TOOL]
         )
 
-        return self._parse_response(response.content[0].text)
+        return self._parse_response(response.content)
 
     async def generate_follow_up(
         self,
         prospect: Prospect,
-        conversation_context: str = ""
+        conversation_context: str = "",
+        follow_up_intent: str = ""
     ) -> AgentAction:
-        """Generate a follow-up message for a non-responsive prospect."""
+        """Generate a follow-up message for a non-responsive prospect.
 
-        follow_up_number = prospect.message_count  # 2nd, 3rd, etc.
+        Args:
+            prospect: The prospect to follow up with
+            conversation_context: Recent conversation history
+            follow_up_intent: Optional intent/topic for the follow-up (from scheduled action)
+        """
+
+        follow_up_number = prospect.message_count
+
+        # Build intent context if provided
+        intent_guidance = ""
+        if follow_up_intent:
+            intent_guidance = f"""
+Запланированная цель follow-up:
+"{follow_up_intent}"
+
+Учитывай эту цель, но адаптируй сообщение под ТЕКУЩИЙ контекст разговора.
+Если цель уже неактуальна (например, клиент уже ответил на вопрос),
+напиши что-то более подходящее или верни action="wait".
+"""
 
         user_prompt = f"""Клиент не отвечает. Нужно написать follow-up сообщение.
 
@@ -356,12 +483,17 @@ class TelegramAgent:
 История переписки:
 {conversation_context if conversation_context else "Пока только наше первое сообщение."}
 
+{intent_guidance}
+
 Это будет {follow_up_number + 1}-е сообщение.
 
 Правила:
 - 2-е сообщение: мягкое напоминание + предложение консультации
 - 3-е сообщение: проявление заботы + вопрос об актуальности
 - 4+ сообщение: возможно, стоит остановиться (верни action="wait")
+
+ВАЖНО: Сообщение должно быть естественным и учитывать ТЕКУЩИЙ контекст,
+а не просто повторять предыдущие сообщения.
 
 Верни JSON с решением.
 """
@@ -370,50 +502,77 @@ class TelegramAgent:
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=self.system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            messages=[{"role": "user", "content": user_prompt}],
+            tools=[SCHEDULE_FOLLOWUP_TOOL]
         )
 
-        return self._parse_response(response.content[0].text)
+        return self._parse_response(response.content)
 
-    def _parse_response(self, response_text: str) -> AgentAction:
+    def _parse_response(self, response_text: str | list) -> AgentAction:
         """
         Parse LLM response into AgentAction.
 
-        Handles JSON extraction from LLM output and extracts scheduling_data
-        for scheduling actions.
+        Handles both JSON responses AND tool_use blocks from Claude API.
 
         Args:
-            response_text: Raw text response from the LLM
+            response_text: Raw text response OR list of content blocks from Claude
 
         Returns:
             AgentAction with parsed action, message, reason, and scheduling_data
         """
         import json
 
-        # Clean up response - find JSON in the text
-        text = response_text.strip()
+        # Handle content blocks (tool_use responses)
+        if isinstance(response_text, list):
+            # Look for tool_use blocks
+            for block in response_text:
+                if hasattr(block, 'type') and block.type == "tool_use":
+                    if block.name == "schedule_followup":
+                        # Extract text response if present
+                        text_message = None
+                        for b in response_text:
+                            if hasattr(b, 'type') and b.type == "text":
+                                text_message = b.text
+                                break
 
-        # Try to find JSON object
-        start = text.find('{')
-        end = text.rfind('}')
+                        return AgentAction(
+                            action="schedule_followup",
+                            message=text_message,  # Confirmation message to client
+                            reason=block.input.get("reason", "Client requested follow-up"),
+                            scheduling_data=block.input
+                        )
 
-        if start != -1 and end != -1:
-            json_str = text[start:end + 1]
-            try:
-                data = json.loads(json_str)
-                return AgentAction(
-                    action=data.get("action", "wait"),
-                    message=data.get("message"),
-                    reason=data.get("reason"),
-                    scheduling_data=data.get("scheduling_data")
-                )
-            except json.JSONDecodeError:
-                pass
+            # If no tool_use, try to extract text and parse as JSON
+            for block in response_text:
+                if hasattr(block, 'type') and block.type == "text":
+                    response_text = block.text
+                    break
+
+        # Handle string responses (JSON format)
+        if isinstance(response_text, str):
+            text = response_text.strip()
+
+            # Try to find JSON object
+            start = text.find('{')
+            end = text.rfind('}')
+
+            if start != -1 and end != -1:
+                json_str = text[start:end + 1]
+                try:
+                    data = json.loads(json_str)
+                    return AgentAction(
+                        action=data.get("action", "wait"),
+                        message=data.get("message"),
+                        reason=data.get("reason"),
+                        scheduling_data=data.get("scheduling_data")
+                    )
+                except json.JSONDecodeError:
+                    pass
 
         # Fallback - couldn't parse, escalate for safety
         return AgentAction(
             action="escalate",
-            reason=f"Could not parse LLM response: {response_text[:100]}"
+            reason=f"Could not parse LLM response: {str(response_text)[:100]}"
         )
 
     def check_rate_limit(self, prospect: Prospect, messages_today: int) -> bool:
