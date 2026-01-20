@@ -42,7 +42,15 @@ Parse the time expression from the client's message and convert it to an exact d
 IMPORTANT:
 - Always confirm the scheduled time to the client in your response text
 - Use ISO 8601 format for follow_up_time (e.g., "2026-01-20T10:00:00+08:00")
-- The follow_up_intent should describe WHAT to follow up about, not the exact message""",
+- The follow_up_intent should describe WHAT to follow up about, not the exact message
+
+КРИТИЧЕСКИ ВАЖНО для текстового ответа:
+- В тексте пиши ТОЛЬКО короткое подтверждение для клиента!
+- НЕ пиши анализ, рассуждения или описание своих действий
+- НЕ пиши "Клиент просит...", "Это запрос на...", "нужно использовать..."
+- ПРАВИЛЬНО: "Хорошо, через 5 минут напишу!" или "Отлично, напишу завтра!"
+- НЕПРАВИЛЬНО: "Клиент просит написать через 5 минут. Это запрос на follow-up."
+- Твой текст будет отправлен клиенту напрямую - пиши как человек!""",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -462,6 +470,7 @@ class TelegramAgent:
 
         # Build intent context if provided
         intent_guidance = ""
+        is_scheduled_followup = bool(follow_up_intent)
         if follow_up_intent:
             intent_guidance = f"""
 Запланированная цель follow-up:
@@ -470,6 +479,10 @@ class TelegramAgent:
 Учитывай эту цель, но адаптируй сообщение под ТЕКУЩИЙ контекст разговора.
 Если цель уже неактуальна (например, клиент уже ответил на вопрос),
 напиши что-то более подходящее или верни action="wait".
+
+КРИТИЧЕСКИ ВАЖНО: Это выполнение ЗАПЛАНИРОВАННОГО follow-up.
+НЕ используй tool schedule_followup - просто напиши сообщение клиенту.
+Верни JSON с action="reply" и текстом сообщения.
 """
 
         user_prompt = f"""Клиент не отвечает. Нужно написать follow-up сообщение.
@@ -498,13 +511,18 @@ class TelegramAgent:
 Верни JSON с решением.
 """
 
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-            tools=[SCHEDULE_FOLLOWUP_TOOL]
-        )
+        # For scheduled follow-ups, DON'T provide schedule_followup tool
+        # to prevent recursive scheduling
+        api_kwargs = {
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 1024,
+            "system": self.system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+        if not is_scheduled_followup:
+            api_kwargs["tools"] = [SCHEDULE_FOLLOWUP_TOOL]
+
+        response = self.client.messages.create(**api_kwargs)
 
         return self._parse_response(response.content)
 
@@ -528,12 +546,27 @@ class TelegramAgent:
             for block in response_text:
                 if hasattr(block, 'type') and block.type == "tool_use":
                     if block.name == "schedule_followup":
-                        # Extract text response if present
+                        # Extract text response - use LAST text block (confirmation),
+                        # not first (which may be internal analysis/reasoning)
                         text_message = None
-                        for b in response_text:
+                        for b in reversed(response_text):
                             if hasattr(b, 'type') and b.type == "text":
                                 text_message = b.text
                                 break
+
+                        # CRITICAL: Detect leaked reasoning in text_message
+                        # Agent sometimes returns internal thoughts instead of client confirmation
+                        if text_message:
+                            reasoning_patterns = [
+                                text_message.startswith("Клиент "),
+                                "Это запрос на" in text_message,
+                                "follow-up" in text_message.lower() and len(text_message) > 80,
+                                "schedule_followup" in text_message,
+                                "нужно использовать" in text_message,
+                                "tool" in text_message.lower() and "использ" in text_message.lower(),
+                            ]
+                            if any(reasoning_patterns):
+                                text_message = None  # Force daemon to use fallback
 
                         return AgentAction(
                             action="schedule_followup",

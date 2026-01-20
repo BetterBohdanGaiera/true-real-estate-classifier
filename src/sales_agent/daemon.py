@@ -338,6 +338,14 @@ class TelegramDaemon:
 
                         # Always send confirmation - use agent's text or generate fallback
                         confirmation = action.message
+
+                        # SAFETY: Check for leaked reasoning in confirmation
+                        if confirmation:
+                            reasoning_patterns = ["Клиент ", "Это запрос", "schedule_followup", "нужно использовать", "follow-up" if len(confirmation) > 80 else ""]
+                            if any(p and p in confirmation for p in reasoning_patterns):
+                                console.print(f"[yellow]Detected leaked reasoning in confirmation, using fallback[/yellow]")
+                                confirmation = None
+
                         if not confirmation:
                             # Calculate human-friendly time description
                             import pytz
@@ -588,6 +596,15 @@ class TelegramDaemon:
             elif response.action == "wait":
                 console.print(f"[yellow]Agent decided not to follow up with {prospect.name}: {response.reason}[/yellow]")
                 return
+            elif response.action == "schedule_followup":
+                # Agent tried to recursively schedule - use the text message if safe
+                console.print(f"[yellow]Agent tried to reschedule - using message text instead[/yellow]")
+                reasoning_patterns = ["Клиент ", "Это запрос", "schedule", "follow-up", "нужно использ"]
+                if response.message and not any(p in response.message for p in reasoning_patterns):
+                    message = response.message
+                else:
+                    # Generate default follow-up message
+                    message = f"Привет! Как обещал(а), пишу. {follow_up_intent or 'Как у вас дела?'}"
             else:
                 console.print(f"[yellow]Unexpected action from follow-up generation: {response.action}[/yellow]")
                 return
