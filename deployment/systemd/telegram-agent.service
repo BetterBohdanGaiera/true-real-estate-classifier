@@ -1,0 +1,88 @@
+# Telegram Sales Agent Systemd Service
+#
+# This service runs the Telegram agent daemon for automated prospect
+# outreach and conversation management with Zoom meeting scheduling.
+#
+# INSTALLATION:
+#   1. Update the paths below (WorkingDirectory, ExecStart, EnvironmentFile)
+#   2. Create the sales_agent user: sudo useradd -r -s /bin/bash sales_agent
+#   3. Set ownership of project directory: sudo chown -R sales_agent:sales_agent /path/to/Classifier
+#   4. Copy this file to /etc/systemd/system/telegram-agent.service
+#   5. Reload systemd: sudo systemctl daemon-reload
+#   6. Enable service: sudo systemctl enable telegram-agent
+#   7. Start service: sudo systemctl start telegram-agent
+#
+# MANAGEMENT:
+#   - Start:   sudo systemctl start telegram-agent
+#   - Stop:    sudo systemctl stop telegram-agent
+#   - Restart: sudo systemctl restart telegram-agent
+#   - Status:  sudo systemctl status telegram-agent
+#   - Logs:    sudo journalctl -u telegram-agent -f
+#   - Logs (last 100): sudo journalctl -u telegram-agent -n 100
+#
+# PATHS TO UPDATE:
+#   - WorkingDirectory: /path/to/Classifier -> actual project path
+#   - ExecStart: /path/to/uv -> actual uv path (find with: which uv)
+#   - EnvironmentFile: /path/to/Classifier/.env -> actual .env path
+#
+# TROUBLESHOOTING:
+#   - Check logs: sudo journalctl -u telegram-agent -e
+#   - Verify .env exists and has correct permissions
+#   - Ensure Telegram session file is accessible by sales_agent user
+#   - Verify uv and Python environment are properly configured
+
+[Unit]
+Description=Telegram Sales Agent Daemon
+Documentation=https://github.com/yourusername/Classifier
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+
+# User and Group - create with: sudo useradd -r -s /bin/bash sales_agent
+User=sales_agent
+Group=sales_agent
+
+# Working directory - UPDATE THIS PATH
+WorkingDirectory=/path/to/Classifier
+
+# Main command - UPDATE THE UV PATH (find with: which uv)
+# Uses uv to run the daemon within the project's virtual environment
+ExecStart=/path/to/uv run python src/sales_agent/daemon.py
+
+# Restart configuration
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telegram-agent
+
+# Environment configuration
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+# Environment file - UPDATE THIS PATH (optional, loads if exists)
+EnvironmentFile=-/path/to/Classifier/.env
+
+# Timeout configuration
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/path/to/Classifier
+
+# Resource limits (adjust as needed)
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

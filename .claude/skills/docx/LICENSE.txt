@@ -1,0 +1,21 @@
+These materials are the intellectual property of Anthropic and are protected
+under our Consumer or Commercial Terms of Service, depending on which governs
+your use of Anthropic's Services. Without limiting any terms or protections
+therein, you are expressly prohibited from:
+
+- "Extract[ing] these materials from the Services or retain[ing] copies ...
+  outside the Services",
+- Reproducing, copying or creating copies (other than transitory or temporary
+  copies to the extent necessary and authorized) of these materials,
+- Preparing derivative works based upon or derived from these materials,
+- Distributing, sharing, displaying, transferring, publishing, sublicensing
+  or otherwise making available these materials to any third party,
+- Selling or otherwise commercializing inventions, products, or services that
+  use these materials, and
+- Reverse engineering, disassembling, decompiling these materials.
+
+Anthropic retains all right, title, and interest in these materials, including
+all copyrights, patents, and other intellectual property rights therein. Receipt
+or possession of these materials does not convey any rights to you in the
+materials, express, or implied, except as expressly stated herein or in your
+agreement with Anthropic.

@@ -1,0 +1,19 @@
+{
+  "center_account": {
+    "session_path": "~/.telegram_dl/user.session",
+    "description": "Main Telegram account that runs the daemon and sends messages as Мария"
+  },
+  "test_prospects": [
+    {
+      "telegram_id": "@bohdanpytaichuk",
+      "name": "Богдан",
+      "role": "primary_test",
+      "description": "Primary test account for manual testing"
+    }
+  ],
+  "test_mode": {
+    "enabled": true,
+    "skip_working_hours": true,
+    "skip_rate_limits": false
+  }
+}

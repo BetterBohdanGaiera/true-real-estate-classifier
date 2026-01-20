@@ -363,3 +363,44 @@ class ProspectManager:
                 count += 1
 
         return count
+
+    def reset_prospect(self, telegram_id: int | str) -> list[int]:
+        """
+        Reset a prospect to 'new' status for testing.
+
+        Clears conversation history, resets status, and timestamps while
+        preserving identity information (telegram_id, name, context, notes).
+
+        Args:
+            telegram_id: Telegram ID of the prospect to reset
+
+        Returns:
+            List of agent message IDs from conversation history (for optional deletion)
+
+        Raises:
+            ValueError: If prospect not found
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            raise ValueError(f"Prospect {telegram_id} not found")
+
+        # Collect agent message IDs before clearing history
+        agent_message_ids = [
+            msg.id for msg in prospect.conversation_history
+            if msg.sender == "agent"
+        ]
+
+        # Reset to new status
+        prospect.status = ProspectStatus.NEW
+        prospect.message_count = 0
+        prospect.conversation_history = []
+        prospect.first_contact = None
+        prospect.last_contact = None
+        prospect.last_response = None
+
+        # Save changes
+        self._save_prospects()
+
+        return agent_message_ids

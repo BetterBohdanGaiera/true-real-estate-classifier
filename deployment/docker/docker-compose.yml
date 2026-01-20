@@ -1,0 +1,118 @@
+# Telegram Sales Agent - Docker Compose Stack
+#
+# PREREQUISITES:
+#   1. Create .env file in project root with required variables:
+#      - ANTHROPIC_API_KEY=your_key
+#      - POSTGRES_PASSWORD=your_password (for database)
+#   2. Ensure Telegram credentials exist in ~/.telegram_dl/
+#   3. (Optional) Configure Zoom credentials in ~/.zoom_credentials/
+#
+# USAGE:
+#   - Start stack:   docker-compose -f deployment/docker/docker-compose.yml up -d
+#   - Stop stack:    docker-compose -f deployment/docker/docker-compose.yml down
+#   - View logs:     docker-compose -f deployment/docker/docker-compose.yml logs -f telegram-agent
+#   - Restart agent: docker-compose -f deployment/docker/docker-compose.yml restart telegram-agent
+#
+# NOTES:
+#   - Database data persists in postgres_data volume
+#   - Telegram credentials are mounted read-only from host
+#   - DATABASE_URL is automatically configured to use postgres service
+#   - Agent will auto-restart on failure
+#
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  # Stores scheduled actions and other persistent data for the Telegram agent.
+  # Uses PostgreSQL 16 Alpine for a lightweight, production-ready database.
+  postgres:
+    image: postgres:16-alpine
+    container_name: telegram-agent-db
+    environment:
+      POSTGRES_USER: sales_agent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: sales_agent
+    volumes:
+      # Persistent data volume - survives container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Mount migrations for initialization (optional, run manually if needed)
+      - ../../src/sales_agent/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      # Expose PostgreSQL port for debugging/development
+      # Remove or comment out in production for security
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sales_agent -d sales_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - telegram-agent-network
+
+  # ==========================================================================
+  # Telegram Agent Daemon
+  # ==========================================================================
+  # Long-running service that handles prospect outreach and conversations.
+  # Integrates with Claude AI for natural language processing and
+  # PostgreSQL for scheduled action persistence.
+  telegram-agent:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    container_name: telegram-agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database connection (points to postgres service within Docker network)
+      DATABASE_URL: postgresql://sales_agent:${POSTGRES_PASSWORD:-changeme}@postgres:5432/sales_agent
+      # Timezone for scheduling (Bali/Indonesia)
+      TZ: Asia/Makassar
+    env_file:
+      # Load additional environment variables from project root .env
+      # Includes: ANTHROPIC_API_KEY, LOG_LEVEL, etc.
+      - ../../.env
+    volumes:
+      # Mount Telegram credentials (required for Telethon authentication)
+      # Note: Needs read-write access because Telethon updates the session file
+      - ${HOME}/.telegram_dl:/root/.telegram_dl:rw
+      # Mount Zoom credentials (optional, for Zoom meeting scheduling)
+      - ${HOME}/.zoom_credentials:/root/.zoom_credentials:ro
+      # Mount Google Calendar credentials (optional, for calendar integration)
+      - ../../.claude/skills/google-calendar/accounts:/app/.claude/skills/google-calendar/accounts:ro
+      # Mount knowledge base (optional, for AI knowledge)
+      - ../../knowledge_base_final:/app/knowledge_base_final:ro
+      # Mount skills directories (for tone-of-voice and how-to-communicate)
+      - ../../.claude/skills/tone-of-voice:/app/.claude/skills/tone-of-voice:ro
+      - ../../.claude/skills/how-to-communicate:/app/.claude/skills/how-to-communicate:ro
+      # Mount config directory (for prospects.json and agent_config.json)
+      - ../../src/sales_agent/config:/app/src/sales_agent/config
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        # Limit log file size to prevent disk space issues
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - telegram-agent-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  telegram-agent-network:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  # Persistent PostgreSQL data storage
+  postgres_data:
+    driver: local

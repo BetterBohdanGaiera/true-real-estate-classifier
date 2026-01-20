@@ -448,7 +448,8 @@ class TelegramAgent:
         self,
         prospect: Prospect,
         conversation_context: str = "",
-        follow_up_intent: str = ""
+        follow_up_intent: str = "",
+        is_client_requested: bool = False
     ) -> AgentAction:
         """Generate a follow-up message for a non-responsive prospect.
 
@@ -456,6 +457,8 @@ class TelegramAgent:
             prospect: The prospect to follow up with
             conversation_context: Recent conversation history
             follow_up_intent: Optional intent/topic for the follow-up (from scheduled action)
+            is_client_requested: If True, this follow-up was explicitly requested by the client
+                                 and MUST be sent (no "wait" action allowed)
         """
 
         follow_up_number = prospect.message_count
@@ -463,7 +466,17 @@ class TelegramAgent:
         # Build intent context if provided
         intent_guidance = ""
         if follow_up_intent:
-            intent_guidance = f"""
+            if is_client_requested:
+                intent_guidance = f"""
+Запланированная цель follow-up:
+"{follow_up_intent}"
+
+ВАЖНО: Клиент САМ попросил написать ему в это время!
+Это ОБЯЗАТЕЛЬНОЕ сообщение - НЕ возвращай action="wait".
+Адаптируй сообщение под текущий контекст разговора.
+"""
+            else:
+                intent_guidance = f"""
 Запланированная цель follow-up:
 "{follow_up_intent}"
 
@@ -471,6 +484,20 @@ class TelegramAgent:
 Если цель уже неактуальна (например, клиент уже ответил на вопрос),
 напиши что-то более подходящее или верни action="wait".
 """
+
+        # Build rules based on whether this is client-requested
+        if is_client_requested:
+            rules = """Правила для ОБЯЗАТЕЛЬНОГО follow-up:
+- Клиент ЛИЧНО попросил написать ему в это время
+- ОБЯЗАТЕЛЬНО отправь сообщение (action="reply")
+- НИКОГДА не возвращай action="wait" - клиент ждёт!
+- Напиши естественно, учитывая контекст разговора
+- Начни с напоминания, что пишешь как договаривались"""
+        else:
+            rules = f"""Правила:
+- 2-е сообщение: мягкое напоминание + предложение консультации
+- 3-е сообщение: проявление заботы + вопрос об актуальности
+- 4+ сообщение: возможно, стоит остановиться (верни action="wait")"""
 
         user_prompt = f"""Клиент не отвечает. Нужно написать follow-up сообщение.
 
@@ -487,10 +514,7 @@ class TelegramAgent:
 
 Это будет {follow_up_number + 1}-е сообщение.
 
-Правила:
-- 2-е сообщение: мягкое напоминание + предложение консультации
-- 3-е сообщение: проявление заботы + вопрос об актуальности
-- 4+ сообщение: возможно, стоит остановиться (верни action="wait")
+{rules}
 
 ВАЖНО: Сообщение должно быть естественным и учитывать ТЕКУЩИЙ контекст,
 а не просто повторять предыдущие сообщения.

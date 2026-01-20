@@ -136,6 +136,72 @@ class TelegramService:
             pass
         return False
 
+    async def delete_messages(
+        self,
+        telegram_id: int | str,
+        message_ids: list[int],
+        revoke: bool = True
+    ) -> int:
+        """Delete messages from a chat.
+
+        Note: Can only delete messages sent by the authenticated account (center),
+        not the prospect's replies.
+
+        Args:
+            telegram_id: Telegram ID or username of the chat
+            message_ids: List of message IDs to delete
+            revoke: If True, delete for both sides (default: True)
+
+        Returns:
+            Number of messages successfully deleted
+        """
+        if not message_ids:
+            return 0
+
+        # Resolve entity
+        entity, resolved_name = await resolve_entity(self.client, str(telegram_id))
+
+        if entity is None:
+            print(f"Warning: Could not resolve entity for {telegram_id}")
+            return 0
+
+        try:
+            # Delete messages using Telethon API
+            deleted = await self.client.delete_messages(
+                entity,
+                message_ids,
+                revoke=revoke
+            )
+            # deleted is an AffectedMessages object with pts_count
+            deleted_count = len(message_ids) if deleted else 0
+            return deleted_count
+        except Exception as e:
+            # Deletion is not critical, log but don't raise
+            print(f"Warning: Could not delete messages: {e}")
+            return 0
+
+    async def delete_conversation_messages(
+        self,
+        telegram_id: int | str,
+        message_ids: list[int]
+    ) -> int:
+        """Delete agent's messages from a conversation.
+
+        This is a convenience wrapper around delete_messages for cleaning up
+        agent-sent messages during test resets.
+
+        Note: Can only delete messages sent by the authenticated account (center),
+        not the prospect's replies.
+
+        Args:
+            telegram_id: Prospect's telegram ID or username
+            message_ids: List of message IDs to delete (agent-sent only)
+
+        Returns:
+            Number of messages deleted
+        """
+        return await self.delete_messages(telegram_id, message_ids, revoke=True)
+
     async def notify_escalation(
         self,
         notify_id: str,

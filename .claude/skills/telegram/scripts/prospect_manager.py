@@ -241,6 +241,65 @@ class ProspectManager:
         prospect.email = email
         self._save_prospects()
 
+    def set_human_active(self, telegram_id: int | str) -> None:
+        """
+        Mark prospect as taken over by human operator.
+
+        When this flag is set, the bot will stop sending automated messages
+        and scheduled follow-ups will be blocked.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+
+        Raises:
+            ValueError: If prospect not found
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            raise ValueError(f"Prospect {telegram_id} not found")
+
+        prospect.human_active = True
+        self._save_prospects()
+
+    def clear_human_active(self, telegram_id: int | str) -> None:
+        """
+        Clear human takeover flag and return control to bot.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+
+        Raises:
+            ValueError: If prospect not found
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            raise ValueError(f"Prospect {telegram_id} not found")
+
+        prospect.human_active = False
+        self._save_prospects()
+
+    def is_human_active(self, telegram_id: int | str) -> bool:
+        """
+        Check if prospect conversation is taken over by human.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+
+        Returns:
+            True if human is active, False otherwise
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            return False
+
+        return prospect.human_active
+
     def get_conversation_context(self, telegram_id: int | str, limit: int = 20) -> str:
         """Get formatted conversation history for LLM context."""
         key = self._normalize_id(telegram_id)
@@ -265,6 +324,10 @@ class ProspectManager:
         prospect = self._prospects.get(key)
 
         if not prospect:
+            return False
+
+        # Don't follow up if human has taken over
+        if prospect.human_active:
             return False
 
         # Skip if not in active status

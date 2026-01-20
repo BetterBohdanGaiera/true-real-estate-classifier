@@ -610,6 +610,8 @@ class TelegramAgent:
 
     def check_rate_limit(self, prospect: Prospect, messages_today: int) -> bool:
         """Check if we can send another message today."""
+        if self.config.max_messages_per_day_per_prospect is None:
+            return True  # No limit
         return messages_today < self.config.max_messages_per_day_per_prospect
 
     def is_within_working_hours(self) -> bool:

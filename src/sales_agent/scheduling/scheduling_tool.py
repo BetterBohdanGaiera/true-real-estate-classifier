@@ -2,7 +2,8 @@
 Scheduling Tool for Telegram Agent.
 
 Provides methods for the LLM agent to check availability and book meetings.
-Mock mode - no actual Zoom API calls. Email is REQUIRED for booking.
+Supports both mock mode (no Zoom) and real Zoom meeting creation.
+Email is REQUIRED for booking - no email = no booking.
 """
 
 from datetime import date, datetime, time, timedelta
@@ -11,6 +12,12 @@ from typing import Optional
 
 from .sales_calendar import SalesCalendar
 from sales_agent.crm.models import SalesSlot, SchedulingResult, Prospect
+
+# Import ZoomBookingService (optional - gracefully handle if not available)
+try:
+    from sales_agent.zoom import ZoomBookingService
+except ImportError:
+    ZoomBookingService = None
 
 
 # Russian month names for date formatting
@@ -45,18 +52,33 @@ class SchedulingTool:
     """
     Tool for scheduling meetings via calendar integration.
 
-    Mock mode - does not create actual Zoom meetings.
+    Supports both mock mode (no Zoom) and real Zoom meeting creation.
     Email is REQUIRED for booking - no email = no booking.
     """
 
-    def __init__(self, calendar: SalesCalendar):
+    def __init__(
+        self,
+        calendar: SalesCalendar,
+        zoom_service: Optional['ZoomBookingService'] = None
+    ):
         """
         Initialize SchedulingTool with a SalesCalendar instance.
 
         Args:
             calendar: SalesCalendar instance managing slot availability
+            zoom_service: Optional ZoomBookingService for real meeting creation.
+                         If None, operates in mock mode (no actual Zoom meetings).
         """
         self.calendar = calendar
+        self.zoom_service = zoom_service
+
+        # Log mode
+        if self.zoom_service and self.zoom_service.enabled:
+            from rich.console import Console
+            Console().print("[green]SchedulingTool: Zoom integration ENABLED[/green]")
+        else:
+            from rich.console import Console
+            Console().print("[yellow]SchedulingTool: Mock mode (no Zoom)[/yellow]")
 
     def _format_date_russian(self, target_date: date) -> str:
         """
@@ -145,7 +167,10 @@ class SchedulingTool:
         topic: str = "Консультация по недвижимости на Бали"
     ) -> SchedulingResult:
         """
-        Book a slot for a meeting (mock mode - no Zoom API).
+        Book a slot for a meeting.
+
+        Creates a real Zoom meeting if zoom_service is provided and enabled,
+        otherwise operates in mock mode (no actual Zoom meeting).
 
         IMPORTANT: client_email is REQUIRED. Without email, booking will fail.
 
@@ -196,17 +221,42 @@ class SchedulingTool:
         formatted_date = self._format_date_russian(booked_slot.date)
         time_str = booked_slot.start_time.strftime("%H:%M")
 
-        confirmation_message = (
-            f"Отлично! Встреча назначена на {formatted_date} в {time_str}.\n\n"
-            f"Ссылка на Zoom будет отправлена на {client_email} за день до встречи.\n\n"
-            f"Наш эксперт свяжется с вами в назначенное время."
-        )
+        # Create Zoom meeting if service is available
+        zoom_url = None
+        if self.zoom_service and self.zoom_service.enabled:
+            from datetime import datetime as dt
+            meeting_time = dt.combine(booked_slot.date, booked_slot.start_time)
+            zoom_url = self.zoom_service.create_meeting(
+                topic=topic,
+                start_time=meeting_time,
+                duration=30,
+                invitee_email=client_email,
+                invitee_name=prospect.name
+            )
+            if zoom_url:
+                from rich.console import Console
+                Console().print(f"[green]Created Zoom meeting: {zoom_url}[/green]")
+
+        # Format confirmation message based on whether we have a real Zoom URL
+        if zoom_url:
+            confirmation_message = (
+                f"Отлично! Встреча назначена на {formatted_date} в {time_str}.\n\n"
+                f"Ссылка на Zoom: {zoom_url}\n\n"
+                f"Приглашение также отправлено на {client_email}.\n"
+                f"Наш эксперт свяжется с вами в назначенное время."
+            )
+        else:
+            confirmation_message = (
+                f"Отлично! Встреча назначена на {formatted_date} в {time_str}.\n\n"
+                f"Ссылка на Zoom будет отправлена на {client_email} за день до встречи.\n\n"
+                f"Наш эксперт свяжется с вами в назначенное время."
+            )
 
         return SchedulingResult(
             success=True,
             message=confirmation_message,
             slot=booked_slot,
-            zoom_url=None  # Mock mode - no actual Zoom URL
+            zoom_url=zoom_url  # Now contains actual URL if Zoom service is enabled
         )
 
     def get_slot_by_time(
@@ -239,7 +289,15 @@ if __name__ == "__main__":
     config_path = Path(__file__).parent.parent / "config" / "sales_slots.json"
 
     calendar = SalesCalendar(config_path)
-    tool = SchedulingTool(calendar)
+
+    # Try to initialize with Zoom service if available
+    zoom_service = None
+    if ZoomBookingService:
+        zoom_service = ZoomBookingService()
+        if not zoom_service.enabled:
+            zoom_service = None
+
+    tool = SchedulingTool(calendar, zoom_service=zoom_service)
 
     print("=== Available Times ===")
     availability = tool.get_available_times(days=3)
@@ -259,3 +317,5 @@ if __name__ == "__main__":
         result = tool.book_meeting(slots[0].id, prospect, "test@example.com")
         print(f"Success: {result.success}")
         print(f"Message: {result.message}")
+        if result.zoom_url:
+            print(f"Zoom URL: {result.zoom_url}")

@@ -99,7 +99,7 @@ class AgentConfig(BaseModel):
     sales_director_name: str = "Антон Мироненко"  # Sales director name for templates
     company_name: str = "True Real Estate"
     response_delay_range: tuple[float, float] = (2.0, 5.0)  # Seconds
-    max_messages_per_day_per_prospect: int = 3
+    max_messages_per_day_per_prospect: Optional[int] = None  # None means no limit
     working_hours: Optional[tuple[int, int]] = None  # e.g., (9, 21) for 9am-9pm
 
     # Fields for skill and knowledge integration

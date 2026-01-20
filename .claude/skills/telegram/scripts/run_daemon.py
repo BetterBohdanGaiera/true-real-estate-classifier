@@ -564,20 +564,25 @@ class TelegramDaemon:
             context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
             # Generate contextual follow-up with intent guidance
+            # Scheduled follow-ups are client-requested and MUST be sent
             response = await self.agent.generate_follow_up(
                 prospect,
                 context,
-                follow_up_intent=follow_up_intent
+                follow_up_intent=follow_up_intent,
+                is_client_requested=True  # Client explicitly requested this follow-up
             )
 
             if response.action == "reply" and response.message:
                 message = response.message
             elif response.action == "wait":
-                console.print(f"[yellow]Agent decided not to follow up with {prospect.name}: {response.reason}[/yellow]")
-                return
+                # Client explicitly requested this follow-up - we MUST send something
+                # This is a fallback in case the agent still returns "wait" despite instructions
+                console.print(f"[yellow]Agent returned 'wait' for client-requested follow-up. Using fallback message.[/yellow]")
+                message = f"Привет! Как и договорились, пишу вам 😊 {follow_up_intent or 'Как у вас дела?'}"
             else:
                 console.print(f"[yellow]Unexpected action from follow-up generation: {response.action}[/yellow]")
-                return
+                # Still send for client-requested follow-ups
+                message = f"Привет! Как и договорились, пишу вам 😊"
 
             # Send message
             result = await self.service.send_message(prospect.telegram_id, message)

@@ -369,6 +369,10 @@ class SchedulerService:
                     )
                     await self._execute_action(action.id)
                     overdue_count += 1
+
+                    # Rate limiting: wait between overdue executions to prevent Telegram API flooding
+                    console.print("[dim]Rate limiting: waiting 5s before next overdue action...[/dim]")
+                    await asyncio.sleep(5)
                 else:
                     # Action is in the future - reschedule
                     try:
