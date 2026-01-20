@@ -36,11 +36,22 @@ from sales_agent.scheduling import (
     scheduled_action_manager,
 )
 
+# Import database initialization
+from sales_agent.database import init_database
+
+# Import Zoom booking service (optional)
+try:
+    from sales_agent.zoom import ZoomBookingService
+except ImportError:
+    ZoomBookingService = None
+
 # Import specific functions from scheduled_action_manager
 from sales_agent.scheduling.scheduled_action_manager import (
     create_scheduled_action,
     cancel_pending_for_prospect,
     get_by_id as get_action_by_id,
+    get_pending_actions,
+    close_pool,
 )
 
 console = Console()
@@ -75,6 +86,8 @@ class TelegramDaemon:
         self.scheduling_tool = None
         self.scheduler_service = None
         self.action_manager = None  # Not used directly, but signals intent
+        self.bot_user_id = None  # Telegram ID of the bot account
+        self.bot_username = None  # Username of the bot account
         self.running = False
         self.stats = {
             "messages_sent": 0,
@@ -89,6 +102,13 @@ class TelegramDaemon:
         """Initialize all components."""
         console.print("[bold blue]Initializing Telegram Agent Daemon...[/bold blue]")
 
+        # Initialize database first (required for scheduled actions)
+        try:
+            await init_database()
+        except RuntimeError as e:
+            console.print(f"[red bold]Database initialization failed: {e}[/red bold]")
+            raise
+
         # Load config
         self.config = self._load_config()
         console.print(f"  [green]✓[/green] Config loaded")
@@ -100,7 +120,17 @@ class TelegramDaemon:
 
         # Get account info
         me = await self.service.get_me()
-        console.print(f"  [green]✓[/green] Logged in as: {me['first_name']} (@{me['username']})")
+        self.bot_user_id = me['id']
+        self.bot_username = me.get('username')
+        console.print(f"  [green]✓[/green] Logged in as: {me['first_name']} (@{self.bot_username})")
+
+        # Validate bot is logged into correct account
+        if self.config.telegram_account:
+            expected_username = self.config.telegram_account.lstrip('@').lower()
+            actual_username = (self.bot_username or '').lower()
+            if actual_username != expected_username:
+                console.print(f"[red bold]ERROR: Bot logged in as @{self.bot_username} but config expects @{expected_username}[/red bold]")
+                raise RuntimeError(f"Account mismatch: logged in as @{self.bot_username}, expected @{expected_username}")
 
         # Initialize prospect manager
         self.prospect_manager = ProspectManager(PROSPECTS_FILE)
@@ -119,8 +149,20 @@ class TelegramDaemon:
         available_slots = len(self.sales_calendar.get_available_slots())
         console.print(f"  [green]✓[/green] Sales calendar initialized ({available_slots} slots available)")
 
-        # Initialize scheduling tool
-        self.scheduling_tool = SchedulingTool(self.sales_calendar)
+        # Initialize Zoom booking service (optional)
+        zoom_service = None
+        if ZoomBookingService is not None:
+            zoom_service = ZoomBookingService()
+            if zoom_service.enabled:
+                console.print(f"  [green]✓[/green] Zoom integration enabled")
+            else:
+                console.print(f"  [yellow]⚠[/yellow] Zoom credentials not found (mock mode)")
+                zoom_service = None
+        else:
+            console.print(f"  [yellow]⚠[/yellow] Zoom module not available (mock mode)")
+
+        # Initialize scheduling tool with optional Zoom service
+        self.scheduling_tool = SchedulingTool(self.sales_calendar, zoom_service=zoom_service)
         console.print(f"  [green]✓[/green] Scheduling tool ready")
 
         # Initialize scheduled action manager (imports are module-level functions)
@@ -171,6 +213,14 @@ class TelegramDaemon:
             if not event.is_private:
                 return
 
+            # Verify message is sent TO this bot's account (defense in depth)
+            if self.config.telegram_account:
+                expected_username = self.config.telegram_account.lstrip('@').lower()
+                if self.bot_username and self.bot_username.lower() != expected_username:
+                    # Config mismatch - bot logged into wrong account
+                    console.print(f"[red]Warning: Bot logged in as @{self.bot_username} but config expects @{expected_username}[/red]")
+                    return
+
             sender = await event.get_sender()
             if not sender:
                 return
@@ -204,12 +254,23 @@ class TelegramDaemon:
 
             # Cancel pending follow-ups when client responds
             try:
+                # First, get pending action IDs before cancelling in database
+                pending_actions = await get_pending_actions(str(prospect.telegram_id))
+                pending_ids = [action.id for action in pending_actions]
+
+                # Cancel in database
                 cancelled = await cancel_pending_for_prospect(
                     str(prospect.telegram_id),
                     reason="client_responded"
                 )
+
+                # Also cancel in-memory asyncio tasks in scheduler
+                if self.scheduler_service and pending_ids:
+                    for action_id in pending_ids:
+                        await self.scheduler_service.cancel_action(action_id)
+
                 if cancelled > 0:
-                    console.print(f"[dim]Cancelled {cancelled} pending follow-up(s)[/dim]")
+                    console.print(f"[dim]Cancelled {cancelled} pending follow-up(s) (DB + in-memory)[/dim]")
             except Exception as e:
                 console.print(f"[yellow]Warning: Could not cancel actions: {e}[/yellow]")
 
@@ -699,6 +760,13 @@ class TelegramDaemon:
         if self.scheduler_service:
             await self.scheduler_service.stop()
             console.print("[green]Scheduler stopped[/green]")
+
+        # Close database connection pool
+        try:
+            await close_pool()
+            console.print("[green]Database connections closed[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Error closing database pool: {e}[/yellow]")
 
         if self.client:
             await self.client.disconnect()
