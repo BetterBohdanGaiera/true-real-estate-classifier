@@ -20,8 +20,6 @@
 #   - Agent will auto-restart on failure
 #
 
-version: '3.8'
-
 services:
   # ==========================================================================
   # PostgreSQL Database
@@ -97,6 +95,80 @@ services:
       driver: "json-file"
       options:
         # Limit log file size to prevent disk space issues
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - telegram-agent-network
+
+  # ==========================================================================
+  # Sales Representative Registry Bot
+  # ==========================================================================
+  # Telegram bot for sales rep registration and management.
+  # Handles conversational registration flow and stores reps in database.
+  registry-bot:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.registry
+    container_name: registry-bot
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Database connection (points to postgres service within Docker network)
+      DATABASE_URL: postgresql://sales_agent:${POSTGRES_PASSWORD:-changeme}@postgres:5432/sales_agent
+      # Registry bot Telegram token
+      REGISTRY_BOT_TOKEN: ${REGISTRY_BOT_TOKEN}
+      # Corporate email domain for validation
+      CORPORATE_EMAIL_DOMAIN: ${CORPORATE_EMAIL_DOMAIN:-truerealestate.bali}
+      # Timezone for scheduling (Bali/Indonesia)
+      TZ: Asia/Makassar
+    env_file:
+      # Load additional environment variables from project root .env
+      - ../../.env
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - telegram-agent-network
+
+  # ==========================================================================
+  # Outreach Daemon
+  # ==========================================================================
+  # Background daemon for proactive prospect assignment.
+  # Assigns unreached prospects to active reps and sends notifications.
+  outreach-daemon:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.outreach
+    container_name: outreach-daemon
+    depends_on:
+      postgres:
+        condition: service_healthy
+      registry-bot:
+        condition: service_started
+    environment:
+      # Database connection (points to postgres service within Docker network)
+      DATABASE_URL: postgresql://sales_agent:${POSTGRES_PASSWORD:-changeme}@postgres:5432/sales_agent
+      # Registry bot token for sending notifications
+      REGISTRY_BOT_TOKEN: ${REGISTRY_BOT_TOKEN}
+      # Interval between assignment checks (in seconds)
+      OUTREACH_INTERVAL_SECONDS: ${OUTREACH_INTERVAL_SECONDS:-300}
+      # Maximum prospects to assign to one rep
+      MAX_PROSPECTS_PER_REP: ${MAX_PROSPECTS_PER_REP:-5}
+      # Enable/disable outreach daemon (set to false to disable)
+      OUTREACH_ENABLED: ${OUTREACH_ENABLED:-true}
+      # Timezone for scheduling (Bali/Indonesia)
+      TZ: Asia/Makassar
+    env_file:
+      # Load additional environment variables from project root .env
+      - ../../.env
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
         max-size: "10m"
         max-file: "3"
     networks:

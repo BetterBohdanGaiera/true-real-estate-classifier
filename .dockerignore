@@ -1,0 +1,132 @@
+# Docker build context exclusions
+# This file reduces Docker image size by excluding development-only files
+
+# ============================================================================
+# Large Data Directories (2.1GB+ excluded)
+# ============================================================================
+data/
+knowledge_base/
+
+# ============================================================================
+# Development Directories
+# ============================================================================
+scripts/
+specs/
+adws/
+ai_docs/
+logs/
+
+# ============================================================================
+# Git and Version Control
+# ============================================================================
+.git/
+.gitignore
+
+# ============================================================================
+# Python Development Files
+# ============================================================================
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ============================================================================
+# Claude Code Development Files
+# ============================================================================
+# Exclude all .claude except required skills
+.claude/agents/
+.claude/commands/
+.claude/hooks/
+.claude/output-styles/
+.claude/status_lines/
+.claude/data/
+
+# Exclude unused skills
+.claude/skills/cloudflare-manager/
+.claude/skills/brand-agency/
+.claude/skills/docx/
+.claude/skills/eleven-labs/
+.claude/skills/frontend-design/
+.claude/skills/google-calendar/
+.claude/skills/meta-skill/
+.claude/skills/pdf/
+.claude/skills/video-analysis/
+.claude/skills/video-processor/
+.claude/skills/zoom/
+
+# Exclude telegram scripts directory after refactoring into src/sales_agent/
+.claude/skills/telegram/
+
+# ============================================================================
+# Documentation and Spec Files
+# ============================================================================
+*.md
+!CLAUDE.md
+
+# ============================================================================
+# Environment and Config Files (handled separately)
+# ============================================================================
+.env
+.env2
+.env.example
+.env.*
+
+# ============================================================================
+# IDE and Editor Files
+# ============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============================================================================
+# Testing and Coverage
+# ============================================================================
+testing/
+tests/
+test_*.py
+*_test.py
+
+# ============================================================================
+# Build Artifacts
+# ============================================================================
+dist/
+build/
+*.whl
+
+# ============================================================================
+# Stray Root Files (moved to docs/ and specs/)
+# ============================================================================
+docs/
+
+# ============================================================================
+# Docker Compose (not needed in image)
+# ============================================================================
+deployment/docker/docker-compose.yml
+docker-compose*.yml
+
+# ============================================================================
+# KEEP - Required for production
+# ============================================================================
+# !src/sales_agent/
+# !knowledge_base_final/
+# !.claude/skills/tone-of-voice/
+# !.claude/skills/how-to-communicate/
+# !.claude/skills/zoom-calendar-meeting/
+# !pyproject.toml
+# !uv.lock
+# !deployment/docker/Dockerfile

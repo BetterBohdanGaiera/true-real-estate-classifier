@@ -36,3 +36,18 @@
 
 - Prefer pydantic models over dicts.
 - Use Pydantic models for data validation and serialization.
+
+## Manual Testing - Telegram Accounts
+
+- **Sales Agent Account:** @BetterBohdan - runs the sales agent, sends outreach messages
+- **Test Prospect Account:** @bohdanpytaichuk (Telegram ID: 7836623698) - the ONLY test prospect, receives messages from the agent
+- Only use ONE test prospect (@bohdanpytaichuk) for testing - do not create multiple test prospects
+
+### Testing Initial Outreach (Telegram Agent)
+The main agent reads from `src/sales_agent/config/prospects.json`. To test initial messages:
+1. Set @bohdanpytaichuk status to `"new"` in prospects.json
+2. Run: `PYTHONPATH=src uv run python src/sales_agent/daemon.py`
+3. @bohdanpytaichuk receives the initial sales message from @BetterBohdan
+
+### Testing Assignment Notifications (Outreach Daemon)
+The outreach daemon uses `test_prospects` database table and notifies sales reps about new assignments.
