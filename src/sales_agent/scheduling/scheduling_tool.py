@@ -110,7 +110,7 @@ class SchedulingTool:
     def get_available_times(
         self,
         preferred_date: Optional[date] = None,
-        days: int = 3
+        days: int = 7
     ) -> str:
         """
         Get available time slots formatted for user consumption.

@@ -7,7 +7,6 @@ Integrates with scheduling system for Zoom meeting bookings.
 import asyncio
 import json
 import signal
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -17,14 +16,8 @@ from rich.live import Live
 from rich.table import Table
 from telethon import events
 
-# Add telegram skills directory to path for telegram_fetch import
-# telegram_fetch remains in .claude/skills/telegram/scripts/
-_SKILLS_TELEGRAM_SCRIPTS = Path(__file__).parent.parent.parent / ".claude/skills/telegram/scripts"
-sys.path.insert(0, str(_SKILLS_TELEGRAM_SCRIPTS))
-
-from telegram_fetch import get_client
-
-# Import from new package structure
+# Import from consolidated package structure (no sys.path manipulation needed)
+from sales_agent.telegram.telegram_fetch import get_client
 from sales_agent.telegram import TelegramService
 from sales_agent.telegram.telegram_service import is_private_chat
 from sales_agent.agent import TelegramAgent, KnowledgeLoader
@@ -301,7 +294,7 @@ class TelegramDaemon:
                 # Handle check_availability action
                 if action.action == "check_availability":
                     # Get available slots
-                    availability_text = self.scheduling_tool.get_available_times(days=3)
+                    availability_text = self.scheduling_tool.get_available_times(days=7)
 
                     # Send availability to user
                     await self.service.send_message(
