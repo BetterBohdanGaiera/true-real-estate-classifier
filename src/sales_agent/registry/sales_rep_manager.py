@@ -166,7 +166,9 @@ async def create_sales_rep(
                 $1, $2, $3, $4, $5, $6, $7, NOW(), NOW()
             )
             RETURNING id, telegram_id, telegram_username, name, email, status,
-                      calendar_account_name, is_admin, registered_at, approved_at,
+                      calendar_account_name, is_admin, telegram_phone,
+                      telegram_session_name, telegram_session_ready, agent_name,
+                      calendar_connected, registered_at, approved_at,
                       approved_by, created_at, updated_at
             """,
             telegram_id,
@@ -200,7 +202,9 @@ async def get_by_telegram_id(telegram_id: int) -> Optional[SalesRepresentative]:
         row = await conn.fetchrow(
             """
             SELECT id, telegram_id, telegram_username, name, email, status,
-                   calendar_account_name, is_admin, registered_at, approved_at,
+                   calendar_account_name, is_admin, telegram_phone,
+                   telegram_session_name, telegram_session_ready, agent_name,
+                   calendar_connected, registered_at, approved_at,
                    approved_by, created_at, updated_at
             FROM sales_representatives
             WHERE telegram_id = $1
@@ -227,7 +231,9 @@ async def get_by_id(rep_id: str) -> Optional[SalesRepresentative]:
         row = await conn.fetchrow(
             """
             SELECT id, telegram_id, telegram_username, name, email, status,
-                   calendar_account_name, is_admin, registered_at, approved_at,
+                   calendar_account_name, is_admin, telegram_phone,
+                   telegram_session_name, telegram_session_ready, agent_name,
+                   calendar_connected, registered_at, approved_at,
                    approved_by, created_at, updated_at
             FROM sales_representatives
             WHERE id = $1
@@ -255,7 +261,9 @@ async def list_all() -> list[SalesRepresentative]:
         rows = await conn.fetch(
             """
             SELECT id, telegram_id, telegram_username, name, email, status,
-                   calendar_account_name, is_admin, registered_at, approved_at,
+                   calendar_account_name, is_admin, telegram_phone,
+                   telegram_session_name, telegram_session_ready, agent_name,
+                   calendar_connected, registered_at, approved_at,
                    approved_by, created_at, updated_at
             FROM sales_representatives
             ORDER BY created_at DESC
@@ -281,7 +289,9 @@ async def list_active() -> list[SalesRepresentative]:
         rows = await conn.fetch(
             """
             SELECT id, telegram_id, telegram_username, name, email, status,
-                   calendar_account_name, is_admin, registered_at, approved_at,
+                   calendar_account_name, is_admin, telegram_phone,
+                   telegram_session_name, telegram_session_ready, agent_name,
+                   calendar_connected, registered_at, approved_at,
                    approved_by, created_at, updated_at
             FROM sales_representatives
             WHERE status = $1
@@ -304,7 +314,9 @@ async def list_pending() -> list[SalesRepresentative]:
         rows = await conn.fetch(
             """
             SELECT id, telegram_id, telegram_username, name, email, status,
-                   calendar_account_name, is_admin, registered_at, approved_at,
+                   calendar_account_name, is_admin, telegram_phone,
+                   telegram_session_name, telegram_session_ready, agent_name,
+                   calendar_connected, registered_at, approved_at,
                    approved_by, created_at, updated_at
             FROM sales_representatives
             WHERE status = $1
@@ -511,3 +523,70 @@ async def is_active(telegram_id: int) -> bool:
     """
     rep = await get_by_telegram_id(telegram_id)
     return rep is not None and rep.status == SalesRepStatus.ACTIVE
+
+
+async def update_session_info(
+    telegram_id: int,
+    session_name: str,
+    phone: str,
+    agent_name: str,
+    session_ready: bool = True,
+) -> bool:
+    """
+    Update the Telegram session info for a sales rep.
+
+    Args:
+        telegram_id: Telegram ID of the rep.
+        session_name: Session file name (e.g., 'rep_username').
+        phone: Phone number used for Telethon auth.
+        agent_name: Display name used in agent messages.
+        session_ready: Whether the session auth succeeded.
+
+    Returns:
+        True if updated successfully, False if not found.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE sales_representatives
+            SET telegram_session_name = $1,
+                telegram_phone = $2,
+                agent_name = $3,
+                telegram_session_ready = $4,
+                updated_at = NOW()
+            WHERE telegram_id = $5
+            """,
+            session_name,
+            phone,
+            agent_name,
+            session_ready,
+            telegram_id,
+        )
+
+        return result == "UPDATE 1"
+
+
+async def update_calendar_connected(telegram_id: int, connected: bool = True) -> bool:
+    """
+    Update the calendar connection status for a sales rep.
+
+    Args:
+        telegram_id: Telegram ID of the rep.
+        connected: Whether Google Calendar OAuth is complete.
+
+    Returns:
+        True if updated successfully, False if not found.
+    """
+    async with get_connection() as conn:
+        result = await conn.execute(
+            """
+            UPDATE sales_representatives
+            SET calendar_connected = $1,
+                updated_at = NOW()
+            WHERE telegram_id = $2
+            """,
+            connected,
+            telegram_id,
+        )
+
+        return result == "UPDATE 1"

@@ -4,6 +4,7 @@ Telegram Agent Daemon.
 Long-running service that handles prospect outreach and conversations.
 Integrates with scheduling system for Zoom meeting bookings.
 """
+import argparse
 import asyncio
 import json
 import signal
@@ -17,7 +18,7 @@ from rich.table import Table
 from telethon import events
 
 # Import from consolidated package structure (no sys.path manipulation needed)
-from sales_agent.telegram.telegram_fetch import get_client
+from sales_agent.telegram.telegram_fetch import get_client, get_client_for_rep
 from sales_agent.telegram import TelegramService
 from sales_agent.telegram.telegram_service import is_private_chat
 from sales_agent.agent import TelegramAgent, KnowledgeLoader
@@ -68,7 +69,8 @@ SALES_CALENDAR_CONFIG = CONFIG_DIR / "sales_slots.json"
 class TelegramDaemon:
     """Main daemon that orchestrates the agent."""
 
-    def __init__(self):
+    def __init__(self, rep_telegram_id: int = None):
+        self.rep_telegram_id = rep_telegram_id
         self.client = None
         self.service = None
         self.agent = None
@@ -106,8 +108,29 @@ class TelegramDaemon:
         self.config = self._load_config()
         console.print(f"  [green]✓[/green] Config loaded")
 
-        # Initialize Telegram client
-        self.client = await get_client()
+        # Per-rep mode: load rep from database and override config
+        if self.rep_telegram_id:
+            from sales_agent.registry.sales_rep_manager import get_by_telegram_id
+            rep = await get_by_telegram_id(self.rep_telegram_id)
+            if not rep:
+                raise RuntimeError(f"Sales rep with telegram_id={self.rep_telegram_id} not found in database")
+            if not rep.telegram_session_ready:
+                raise RuntimeError(
+                    f"Telegram session for {rep.name} (@{rep.telegram_username}) is not ready. "
+                    "Run the register-sales skill to authenticate first."
+                )
+            # Override config with rep-specific values
+            if rep.agent_name:
+                self.config.agent_name = rep.agent_name
+            self.config.telegram_account = f"@{rep.telegram_username}"
+            console.print(f"  [green]✓[/green] Per-rep mode: {rep.name} (@{rep.telegram_username})")
+
+            # Initialize Telegram client for this rep
+            self.client = await get_client_for_rep(rep.telegram_session_name)
+        else:
+            # Default mode: use user.session
+            self.client = await get_client()
+
         self.service = TelegramService(self.client, self.config)
         console.print(f"  [green]✓[/green] Telegram connected")
 
@@ -817,7 +840,16 @@ class TelegramDaemon:
 
 async def main():
     """Main entry point."""
-    daemon = TelegramDaemon()
+    parser = argparse.ArgumentParser(description="Telegram Agent Daemon")
+    parser.add_argument(
+        '--rep-telegram-id',
+        type=int,
+        default=None,
+        help='Run daemon for a specific sales rep (by Telegram ID)',
+    )
+    args = parser.parse_args()
+
+    daemon = TelegramDaemon(rep_telegram_id=args.rep_telegram_id)
 
     # Setup signal handlers
     loop = asyncio.get_event_loop()

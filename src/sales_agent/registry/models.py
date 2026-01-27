@@ -50,6 +50,11 @@ class SalesRepresentative(BaseModel):
     status: SalesRepStatus = SalesRepStatus.ACTIVE
     calendar_account_name: Optional[str] = None
     is_admin: bool = False
+    telegram_phone: Optional[str] = None
+    telegram_session_name: Optional[str] = None
+    telegram_session_ready: bool = False
+    agent_name: Optional[str] = None
+    calendar_connected: bool = False
     registered_at: Optional[datetime] = None
     approved_at: Optional[datetime] = None
     approved_by: Optional[str] = None  # UUID of admin
