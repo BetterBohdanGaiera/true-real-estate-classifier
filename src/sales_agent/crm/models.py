@@ -5,7 +5,7 @@ from datetime import datetime, date, time
 from enum import Enum
 from typing import Literal, Optional
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProspectStatus(str, Enum):
@@ -58,6 +58,36 @@ class Prospect(BaseModel):
         use_enum_values = True
 
 
+class ProspectInput(BaseModel):
+    """Validated user input for adding a new prospect."""
+    telegram_id: str
+    name: str = Field(min_length=2, max_length=100)
+    context: str = Field(min_length=10, max_length=1000)
+    notes: str = Field(default="", max_length=2000)
+    email: Optional[str] = None
+
+    @field_validator('telegram_id')
+    @classmethod
+    def validate_telegram_id(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Telegram ID cannot be empty")
+        if v.startswith('@'):
+            if len(v) < 6:
+                raise ValueError("Username too short (min 5 chars after @)")
+        return v
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v.strip() == "":
+            return None
+        import re
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v.strip()):
+            raise ValueError(f"Invalid email format: {v}")
+        return v.strip().lower()
+
+
 class SalesSlot(BaseModel):
     """A time slot for sales meetings."""
     id: str  # Format: "YYYYMMDD_HHMM"
@@ -99,6 +129,14 @@ class AgentConfig(BaseModel):
     sales_director_name: str = "Антон Мироненко"  # Sales director name for templates
     company_name: str = "True Real Estate"
     response_delay_range: tuple[float, float] = (2.0, 5.0)  # Seconds
+    # Length-based delay configuration (seconds)
+    delay_short: tuple[float, float] = (1.0, 2.0)  # <50 chars
+    delay_medium: tuple[float, float] = (3.0, 5.0)  # 50-200 chars
+    delay_long: tuple[float, float] = (5.0, 10.0)  # >200 chars
+    # Reading delay configuration (seconds) - simulates reading incoming message
+    reading_delay_short: tuple[float, float] = (2.0, 4.0)    # <50 chars incoming
+    reading_delay_medium: tuple[float, float] = (4.0, 8.0)   # 50-200 chars incoming
+    reading_delay_long: tuple[float, float] = (8.0, 15.0)    # >200 chars incoming
     max_messages_per_day_per_prospect: Optional[int] = None  # None means no limit
     working_hours: Optional[tuple[int, int]] = None  # e.g., (9, 21) for 9am-9pm
 

@@ -27,13 +27,13 @@ tone-of-voice/
 
 ## Core Principles
 
-1. **Personalize with name** — Always address by name
-2. **End with open questions** — Keep dialogue moving
-3. **Give choices, don't pressure** — "Weekdays or weekends?"
-4. **Lead with value** — Explain why it's useful before asking
-5. **Collect info systematically** — Purpose, type, budget, timeline
-6. **Soft persistence** — Gentle reminders, not harassment
-7. **Justify next steps** — Always explain Zoom value
+1. **Personalize with name**  - Always address by name
+2. **End with open questions**  - Keep dialogue moving
+3. **Give choices, don't pressure**  - "Weekdays or weekends?"
+4. **Lead with value**  - Explain why it's useful before asking
+5. **Collect info systematically**  - Purpose, type, budget, timeline
+6. **Soft persistence**  - Gentle reminders, not harassment
+7. **Justify next steps**  - Always explain Zoom value
 
 ## Meta-Cases Covered
 

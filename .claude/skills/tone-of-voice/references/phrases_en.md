@@ -24,7 +24,7 @@ Explain who you are and why they should talk to you:
 - "My name is <Name>, I'm an investment consultant at True Real Estate."
 - "We operate according to British capital management standards and apply a 140-point due diligence protocol to ensure your investment is profitable and secure."
 - "We're one of the leading investment consulting companies in Bali."
-- "I'd be happy to provide you with all the information about this region — including legal aspects, taxes, and rental yields."
+- "I'd be happy to provide you with all the information about this region  - including legal aspects, taxes, and rental yields."
 - "Our Head of Sales, <Sales_director>, personally visits these construction sites."
 - "Estate Market is our proprietary analytics software that shows real-time occupancy rates 24/7."
 
@@ -50,8 +50,8 @@ Questions that move the dialogue forward:
 
 ### Timeline
 - "When would you be ready to purchase if you find the ideal option?"
-- "If we find 'the one' — how quickly would you be ready to act?"
-- "If such an option appears — when would you be ready to make a purchase?"
+- "If we find 'the one'  - how quickly would you be ready to act?"
+- "If such an option appears  - when would you be ready to make a purchase?"
 
 ### Bali Experience
 - "Have you visited Bali before?"
@@ -62,15 +62,15 @@ Questions that move the dialogue forward:
 
 ## Offering Choices
 
-Don't pressure — provide alternatives:
+Don't pressure  - provide alternatives:
 
 ### Communication Format
 - "Is it convenient to have a call now? Or would you prefer to continue via chat?"
-- "I suggest a short Zoom call — just 20 minutes. What works better for you — weekdays or weekend?"
+- "I suggest a short Zoom call  - just 20 minutes. What works better for you  - weekdays or weekend?"
 
 ### Time Slots
 - "Would you prefer to schedule the consultation on a weekday or weekend?"
-- "What's more convenient — this evening or tomorrow morning?"
+- "What's more convenient  - this evening or tomorrow morning?"
 - "Do you prefer morning or afternoon?"
 
 ### Specific Slots
@@ -86,7 +86,7 @@ Why the call benefits the client:
 - "To save your time, I suggest a short 20-minute Zoom call."
 - "During the meeting, we'll discuss your requirements in detail, share market insights, legal specifics, and tax considerations so you understand what to expect at each stage."
 - "This will take just 20-30 minutes but will save you a week or even two of independent research."
-- "The meeting format is introductory. It doesn't commit you to anything — just a consultation."
+- "The meeting format is introductory. It doesn't commit you to anything  - just a consultation."
 - "We'll explain the potential downsides and pitfalls in these offers, and what to pay attention to."
 
 ---
@@ -109,12 +109,12 @@ For clients who don't respond:
 
 Show that you understand the client:
 
-- "I understand — at this stage, it's important to understand the details."
+- "I understand  - at this stage, it's important to understand the details."
 - "Completely understand. Most investors start with independent research."
-- "That's a very reasonable approach — to understand things first."
+- "That's a very reasonable approach  - to understand things first."
 - "That's a good strategy."
 - "Great that you're not rushing and just exploring."
-- "I completely understand — 90% of my clients started the same way."
+- "I completely understand  - 90% of my clients started the same way."
 
 ---
 
@@ -122,7 +122,7 @@ Show that you understand the client:
 
 If the client declines:
 
-- "Thank you for your response! We won't bother you with more messages — we fully respect your decision."
+- "Thank you for your response! We won't bother you with more messages  - we fully respect your decision."
 - "If in the future you consider investing in Bali again, we'd be happy to help."
 - "To stay connected and follow the most interesting projects, you can subscribe to our Instagram."
 - "Wishing you a wonderful day and good luck with your plans!"
@@ -133,16 +133,16 @@ If the client declines:
 
 ### "Just send me a catalog"
 - "Of course. I can prepare a selection of verified investment opportunities in Bali for you. Just to make it more relevant to your needs, could you tell me..."
-- "I completely understand. I can prepare a personalized selection based on your requirements — may I ask a few simple questions?"
+- "I completely understand. I can prepare a personalized selection based on your requirements  - may I ask a few simple questions?"
 
 ### "Not ready to buy now"
-- "I understand — at this stage, it's important to understand the details before getting overwhelmed by offers."
+- "I understand  - at this stage, it's important to understand the details before getting overwhelmed by offers."
 - "In that case, we can reserve a property in advance with delayed entry or lock in the price during pre-sale."
 
 ### Leasehold Concerns
 - "Land ownership is a key question. We thoroughly explain the difference between Leasehold and Hak Pakai."
-- "We verify contracts for guaranteed extension rights — this is exactly what we discuss during our video consultation."
-- "I understand your concerns — this really needs to be clarified."
+- "We verify contracts for guaranteed extension rights  - this is exactly what we discuss during our video consultation."
+- "I understand your concerns  - this really needs to be clarified."
 
 ---
 

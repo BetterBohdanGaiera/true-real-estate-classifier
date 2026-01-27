@@ -281,6 +281,11 @@ class TelegramDaemon:
             # Get conversation context
             context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
+            # Simulate reading delay (proportional to incoming message length)
+            reading_delay = self.service._calculate_reading_delay(event.text or "")
+            console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {len(event.text or '')} chars[/dim]")
+            await asyncio.sleep(reading_delay)
+
             # Generate response
             try:
                 action = await self.agent.generate_response(
@@ -297,10 +302,19 @@ class TelegramDaemon:
                     availability_text = self.scheduling_tool.get_available_times(days=7)
 
                     # Send availability to user
-                    await self.service.send_message(
+                    result = await self.service.send_message(
                         prospect.telegram_id,
                         availability_text
                     )
+
+                    # Record in conversation history so agent knows what was shown
+                    if result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            result["message_id"],
+                            availability_text
+                        )
 
                     console.print(f"[cyan]→ Sent availability to {prospect.name}[/cyan]")
 
@@ -323,7 +337,15 @@ class TelegramDaemon:
                     # STRICT: Email is REQUIRED for booking
                     if not client_email or not client_email.strip():
                         error_msg = "Для записи на встречу нужен email. На какой адрес отправить приглашение?"
-                        await self.service.send_message(prospect.telegram_id, error_msg)
+                        send_result = await self.service.send_message(prospect.telegram_id, error_msg)
+                        # Record so agent knows email was requested
+                        if send_result.get("sent"):
+                            self.stats["messages_sent"] += 1
+                            self.prospect_manager.record_agent_message(
+                                prospect.telegram_id,
+                                send_result["message_id"],
+                                error_msg
+                            )
                         console.print(f"[yellow]⚠ Schedule rejected - no email provided[/yellow]")
                         return
 
@@ -331,19 +353,28 @@ class TelegramDaemon:
                     self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
 
                     # Book the meeting (mock mode - no actual Zoom call)
-                    result = self.scheduling_tool.book_meeting(
+                    booking_result = self.scheduling_tool.book_meeting(
                         slot_id=slot_id,
                         prospect=prospect,
                         client_email=client_email.strip(),
                         topic=topic
                     )
 
-                    if result.success:
-                        # Send confirmation (no Zoom link in mock mode)
-                        await self.service.send_message(
+                    if booking_result.success:
+                        # Send confirmation
+                        send_result = await self.service.send_message(
                             prospect.telegram_id,
-                            result.message
+                            booking_result.message
                         )
+
+                        # Record confirmation in history
+                        if send_result.get("sent"):
+                            self.stats["messages_sent"] += 1
+                            self.prospect_manager.record_agent_message(
+                                prospect.telegram_id,
+                                send_result["message_id"],
+                                booking_result.message
+                            )
 
                         # Update prospect status
                         self.prospect_manager.update_status(
@@ -357,11 +388,19 @@ class TelegramDaemon:
                         console.print(f"[green]✓ Meeting scheduled for {prospect.name}: {slot_id} (email: {client_email})[/green]")
                     else:
                         # Send error message
-                        await self.service.send_message(
+                        send_result = await self.service.send_message(
                             prospect.telegram_id,
-                            result.message
+                            booking_result.message
                         )
-                        console.print(f"[red]✗ Scheduling failed: {result.error}[/red]")
+                        # Record error in history
+                        if send_result.get("sent"):
+                            self.stats["messages_sent"] += 1
+                            self.prospect_manager.record_agent_message(
+                                prospect.telegram_id,
+                                send_result["message_id"],
+                                booking_result.message
+                            )
+                        console.print(f"[red]✗ Scheduling failed: {booking_result.error}[/red]")
 
                 # Handle schedule_followup action
                 elif action.action == "schedule_followup" and action.scheduling_data:

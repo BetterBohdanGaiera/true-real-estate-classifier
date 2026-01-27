@@ -5,7 +5,6 @@ Handles all Telegram communication with human-like behavior.
 import asyncio
 import random
 from datetime import datetime
-from pathlib import Path
 from typing import Optional, Callable, Any
 
 from telethon import TelegramClient
@@ -13,10 +12,8 @@ from telethon.tl.types import User, Chat, Channel
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
-# Import config from existing telegram_fetch.py (stays in .claude/skills/telegram/scripts/)
-import sys
-sys.path.insert(0, str(Path(__file__).parents[4] / ".claude/skills/telegram/scripts"))
-from telegram_fetch import (
+# Import from consolidated telegram_fetch in the same package
+from sales_agent.telegram.telegram_fetch import (
     get_client,
     resolve_entity,
     get_chat_type,
@@ -53,8 +50,8 @@ class TelegramService:
         if self.config.typing_simulation:
             await self._simulate_typing(entity, text)
 
-        # Human-like delay before sending
-        delay = random.uniform(*self.config.response_delay_range)
+        # Human-like delay before sending (scaled by message length)
+        delay = self._calculate_delay(text)
         await asyncio.sleep(delay)
 
         # Send message
@@ -72,6 +69,47 @@ class TelegramService:
             }
         except Exception as e:
             return {"sent": False, "error": str(e)}
+
+    def _calculate_delay(self, text: str) -> float:
+        """Calculate response delay based on message length.
+
+        Delay tiers:
+        - Short (<50 chars): quick acknowledgments
+        - Medium (50-200 chars): standard responses
+        - Long (>200 chars): detailed explanations
+        """
+        text_length = len(text)
+
+        if text_length < 50:
+            delay_range = self.config.delay_short
+        elif text_length <= 200:
+            delay_range = self.config.delay_medium
+        else:
+            delay_range = self.config.delay_long
+
+        return random.uniform(*delay_range)
+
+    def _calculate_reading_delay(self, incoming_text: str) -> float:
+        """Calculate delay to simulate reading an incoming message.
+
+        Simulates human reading time before responding.
+        Uses reading_delay config fields based on incoming message length.
+
+        Delay tiers:
+        - Short (<50 chars): quick messages
+        - Medium (50-200 chars): standard messages
+        - Long (>200 chars): detailed messages
+        """
+        text_length = len(incoming_text) if incoming_text else 0
+
+        if text_length < 50:
+            delay_range = self.config.reading_delay_short
+        elif text_length <= 200:
+            delay_range = self.config.reading_delay_medium
+        else:
+            delay_range = self.config.reading_delay_long
+
+        return random.uniform(*delay_range)
 
     async def _simulate_typing(self, entity, text: str) -> None:
         """Simulate typing indicator based on message length."""

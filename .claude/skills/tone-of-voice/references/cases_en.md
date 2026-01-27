@@ -40,9 +40,9 @@ Are you considering property in Bali for personal living or as an investment?
 **2nd Message (Micro-Insight Approach):**
 ```
 Good day, <Client_name>! I wanted to share some fresh data from our Estate Market software
-for the Canggu area — last month's actual occupancy rate in the apartment segment
+for the Canggu area  - last month's actual occupancy rate in the apartment segment
 was 82%. If you'd like a yield calculation based on these facts rather than
-marketing brochures — let me know, I'll send the numbers.
+marketing brochures  - let me know, I'll send the numbers.
 ```
 
 **3rd Message (Care & Check-in):**
@@ -64,7 +64,7 @@ for you, or has something changed?
 **Script:**
 ```
 Good day, <Client_name>!
-Thank you for your response! We won't bother you with more messages —
+Thank you for your response! We won't bother you with more messages  -
 we fully respect your decision.
 
 If in the future you consider investing in Bali again,
@@ -82,7 +82,7 @@ Wishing you a wonderful day and good luck with your plans!
 
 **Situation:** Client asks to "just send a catalog," doesn't want to communicate.
 
-**Goal:** Don't release with just a catalog — collect information for personalization.
+**Goal:** Don't release with just a catalog  - collect information for personalization.
 
 **Script:**
 ```
@@ -103,7 +103,7 @@ Thank you, <Client_name>!
 To save your time, I suggest a short 20-minute Zoom call.
 During the meeting, I'll show you the selection with comments on the pros
 and cons of each option.
-What works better for you — weekday evenings or weekends?
+What works better for you  - weekday evenings or weekends?
 ```
 
 ---
@@ -121,7 +121,7 @@ In that case, we can reserve a property in advance with delayed entry
 or lock in the price during pre-sale.
 
 Let me prepare 2-3 such options and show them during a short Zoom call.
-What works better for you — weekday evenings or weekend mornings?
+What works better for you  - weekday evenings or weekend mornings?
 ```
 
 ---
@@ -135,7 +135,7 @@ What works better for you — weekday evenings or weekend mornings?
 **Script:**
 ```
 Good day, <Client_name>!
-Thank you for your trust — it's always a pleasure to work with referrals.
+Thank you for your trust  - it's always a pleasure to work with referrals.
 
 May I ask, are you considering property for living or as an investment?
 ```
@@ -177,10 +177,10 @@ Good day, <Client_name>!
 Perfect timing to explore Bali real estate! Let me briefly explain
 the key investment areas:
 
-• Canggu — highest rental yields, young professional crowd
-• Seminyak — established area, premium segment
-• Uluwatu — emerging, surf culture, strong growth potential
-• Ubud — cultural center, wellness tourism
+• Canggu  - highest rental yields, young professional crowd
+• Seminyak  - established area, premium segment
+• Uluwatu  - emerging, surf culture, strong growth potential
+• Ubud  - cultural center, wellness tourism
 
 During our Zoom call, I can show you the real occupancy data from
 our Estate Market software for each area.
@@ -197,7 +197,7 @@ Would weekday or weekend work better for a 20-minute overview?
 
 **Script:**
 ```
-I completely understand your concerns, <Client_name> — this is the most common question
+I completely understand your concerns, <Client_name>  - this is the most common question
 we receive.
 
 Land ownership is indeed the key question. We thoroughly explain the difference
@@ -206,10 +206,10 @@ extension rights. This is exactly what we discuss during our video consultation
 with actual documents in hand.
 
 The important thing: even if laws change in the future, existing contracts
-are protected — this is a fundamental legal principle.
+are protected  - this is a fundamental legal principle.
 
 Shall we schedule a 20-minute call to walk through the legal framework?
-No commitment — just clarity.
+No commitment  - just clarity.
 ```
 
 ---
@@ -233,7 +233,7 @@ Regarding payment flexibility, many developers offer:
 
 I can prepare a detailed financial model with three scenarios
 (conservative, base, optimistic) for properties matching your criteria.
-When would be convenient for a Zoom call — this week or next?
+When would be convenient for a Zoom call  - this week or next?
 ```
 
 ---
@@ -246,7 +246,7 @@ When would be convenient for a Zoom call — this week or next?
 
 **Script:**
 ```
-Excellent approach, <Client_name> — understanding risks is crucial.
+Excellent approach, <Client_name>  - understanding risks is crucial.
 
 Our 140-point due diligence protocol covers:
 • Developer track record and completed projects
@@ -275,7 +275,7 @@ Good day, <Client_name>!
 We work with various payment methods to accommodate different situations:
 
 • International bank transfers (USD, EUR)
-• Cryptocurrency (BTC, ETH, USDT) — available with select developers
+• Cryptocurrency (BTC, ETH, USDT)  - available with select developers
 • Escrow accounts for added security
 
 Each method has its specifics regarding documentation and timing.
@@ -296,7 +296,7 @@ Shall we schedule a call to discuss the details?
 **Script:**
 ```
 Good day, <Client_name>!
-This is actually a popular model — combining personal use with rental income.
+This is actually a popular model  - combining personal use with rental income.
 
 Many of our properties offer:
 • Owner usage periods (typically 30-60 days/year)
@@ -321,16 +321,16 @@ during a quick Zoom call. Would this week work for you?
 **Script:**
 ```
 Good day, <Client_name>!
-I completely understand — 90% of our clients started exactly where you are now.
+I completely understand  - 90% of our clients started exactly where you are now.
 
 Investing abroad can seem overwhelming, but here's how we simplify it:
 
-1. **Education first** — We explain the entire process step by step
-2. **140-point audit** — We've already done the due diligence
-3. **Legal support** — Full documentation guidance
-4. **Management included** — Turnkey rental operation
+1. **Education first**  - We explain the entire process step by step
+2. **140-point audit**  - We've already done the due diligence
+3. **Legal support**  - Full documentation guidance
+4. **Management included**  - Turnkey rental operation
 
-The meeting format is purely educational — no pressure, no commitment.
+The meeting format is purely educational  - no pressure, no commitment.
 Just clarity on whether this makes sense for your situation.
 
 Would 20 minutes this week work to walk through the basics?
@@ -367,4 +367,4 @@ Would 20 minutes this week work to walk through the basics?
 | Question or choice at end | "Would you prefer... or...?" |
 | Explain value before asking | Why this benefits them |
 | Specifics over vague | "4 PM or 7 PM" not "when convenient" |
-| No pressure | "If anything changes — let me know" |
+| No pressure | "If anything changes  - let me know" |

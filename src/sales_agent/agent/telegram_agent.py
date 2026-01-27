@@ -165,6 +165,16 @@ class TelegramAgent:
             result = result.replace(placeholder, value)
         return result
 
+    def _sanitize_output(self, text: str) -> str:
+        """Remove em-dashes and en-dashes from LLM output, replacing with short dashes."""
+        if not text:
+            return text
+        result = text.replace("\u2014", " - ").replace("\u2013", " - ")
+        # Clean up double spaces from replacements
+        while "  " in result:
+            result = result.replace("  ", " ")
+        return result
+
     def _get_current_bali_time(self) -> str:
         """Get current time in Bali timezone (UTC+8) as formatted string."""
         bali_tz = pytz.timezone(BALI_TIMEZONE)
@@ -229,27 +239,26 @@ class TelegramAgent:
 - "через неделю" → +7 дней, 10:00
 
 ОБЯЗАТЕЛЬНО:
-1. Подтверди клиенту время в тексте ответа: "Хорошо, напишу вам [когда]!"
-2. Вызови schedule_followup с точным временем в ISO 8601 формате
-3. В follow_up_intent опиши О ЧЁМ напомнить (не сам текст сообщения!)
+1. Подтверди КОРОТКО (1 речення): "Добре, напишу [коли]!"
+2. Вызови schedule_followup с точним часом у ISO 8601 форматі
+3. В follow_up_intent коротко опиши про що (3-5 слів)
 
-Пример follow_up_intent:
-- "уточнить интерес к вилле в Чангу после паузы"
-- "напомнить о консультации по финансам"
-- "проверить готовность к Zoom звонку"
+Приклад follow_up_intent (КОРОТКО!):
+- "інтерес до вілли"
+- "консультація"
+- "Zoom"
 
-ВАЖНО: follow_up сообщения будут генерироваться ЗАНОВО в момент отправки,
-с учётом актуального контекста разговора. Укажи только намерение.
+ВАЖНО: follow_up генерується ЗАНОВО при відправці з актуальним контекстом.
 
-КРИТИЧЕСКИ ВАЖНО для подтверждения времени:
+КРИТИЧНО для підтвердження часу (КОРОТКО!):
 - НИКОГДА не пиши точное время типа "18:27" или "19.01 в 14:43"
 - ВСЕГДА повторяй формулировку клиента: "через 5 минут", "через час", "завтра"
-- Люди НЕ говорят "напишу в 18:27" — они говорят "напишу минут через 5"
+- Люди НЕ говорят "напишу в 18:27" - они говорят "напишу минут через 5"
 
-Примеры подтверждений:
-- "напиши через 5 минут" → "Хорошо, напишу через 5 минут!"
-- "свяжись завтра" → "Отлично, напишу завтра!"
-- "через час" → "Хорошо, через час напишу!"
+Приклади підтверджень (КОРОТКО!):
+- "напиши через 5 хвилин" → "Добре, через 5 хвилин!"
+- "завтра" → "Добре, завтра!"
+- "через годину" → "Ок, через годину!"
 """
 
         # Build how-to-communicate section
@@ -262,7 +271,7 @@ class TelegramAgent:
 """
 
         # Assemble complete prompt
-        prompt = f"""Ты — {self.agent_name}, эксперт по недвижимости в агентстве True Real Estate на Бали.
+        prompt = f"""Ты - {self.agent_name}, эксперт по недвижимости в агентстве True Real Estate на Бали.
 Ты общаешься с потенциальными клиентами через Telegram от своего имени.
 
 ВАЖНО: Ты пишешь РЕАЛЬНЫЕ сообщения реальным людям. Будь естественной, как настоящий человек.
@@ -273,8 +282,8 @@ class TelegramAgent:
 КРИТИЧЕСКИ ВАЖНО:
 - Ты ВСЕГДА {self.agent_name}. Это твоё имя, используй его.
 - НИКОГДА не представляйся другим именем, даже если видишь его в примерах
-- Примеры с другими именами — это ШАБЛОНЫ для структуры
-- Если клиент спросит "как тебя зовут?" — отвечай: "{self.agent_name}"
+- Примеры с другими именами - это ШАБЛОНЫ для структуры
+- Если клиент спросит "как тебя зовут?" - отвечай: "{self.agent_name}"
 - Руководитель отдела продаж: {self.config.sales_director_name}
 
 ## Твоя Задача
@@ -284,11 +293,13 @@ class TelegramAgent:
 4. Отвечать на вопросы о недвижимости на Бали используя базу знаний
 
 ## Правила Ответов
-- Отвечай КОРОТКО и по делу (2-5 предложений обычно достаточно)
+- **КРИТИЧНО:** Відповідай максимально коротко, 1-3 речення. Це обов'язкова вимога!
 - Не повторяй информацию, которую клиент уже дал
 - Задавай только ОДИН вопрос за раз (максимум два, если связаны)
 - Используй формальное "Вы"
-- Будь конкретной: "в 16:00 или 19:00" вместо "когда удобно"
+- Будь конкретной: "в 16:00 або 19:00" замість "коли зручно"
+- Ніяких довгих пояснень - клієнти цінують лаконічність
+- **Форматування:** Ніколи не використовуй довге тире (—) або середнє тире (–). Тільки короткий дефіс з пробілами ( - ).
 
 ## Когда НЕ Отвечать
 Если сообщение содержит:
@@ -570,7 +581,7 @@ class TelegramAgent:
 
                         return AgentAction(
                             action="schedule_followup",
-                            message=text_message,  # Confirmation message to client
+                            message=self._sanitize_output(text_message) if text_message else text_message,
                             reason=block.input.get("reason", "Client requested follow-up"),
                             scheduling_data=block.input
                         )
@@ -593,9 +604,10 @@ class TelegramAgent:
                 json_str = text[start:end + 1]
                 try:
                     data = json.loads(json_str)
+                    msg = data.get("message")
                     return AgentAction(
                         action=data.get("action", "wait"),
-                        message=data.get("message"),
+                        message=self._sanitize_output(msg) if msg else msg,
                         reason=data.get("reason"),
                         scheduling_data=data.get("scheduling_data")
                     )
