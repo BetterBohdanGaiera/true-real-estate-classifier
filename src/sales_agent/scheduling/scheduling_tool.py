@@ -19,6 +19,18 @@ try:
 except ImportError:
     ZoomBookingService = None
 
+# Try to import CalendarAwareScheduler (gracefully handle if not available)
+try:
+    from sales_agent.scheduling.calendar_aware_scheduler import CalendarAwareScheduler
+except ImportError:
+    CalendarAwareScheduler = None
+
+# Try to import CalendarConnector type for type hints
+try:
+    from sales_agent.registry.calendar_connector import CalendarConnector
+except ImportError:
+    CalendarConnector = None
+
 
 # Russian month names for date formatting
 RUSSIAN_MONTHS = {
@@ -59,7 +71,9 @@ class SchedulingTool:
     def __init__(
         self,
         calendar: SalesCalendar,
-        zoom_service: Optional['ZoomBookingService'] = None
+        zoom_service: Optional['ZoomBookingService'] = None,
+        calendar_connector: Optional['CalendarConnector'] = None,
+        rep_telegram_id: Optional[int] = None
     ):
         """
         Initialize SchedulingTool with a SalesCalendar instance.
@@ -68,11 +82,31 @@ class SchedulingTool:
             calendar: SalesCalendar instance managing slot availability
             zoom_service: Optional ZoomBookingService for real meeting creation.
                          If None, operates in mock mode (no actual Zoom meetings).
+            calendar_connector: Optional CalendarConnector for Google Calendar integration.
+                               If provided with rep_telegram_id, uses real calendar availability.
+            rep_telegram_id: Optional Telegram ID of the sales rep (needed for calendar integration).
         """
         self.calendar = calendar
         self.zoom_service = zoom_service
+        self.calendar_connector = calendar_connector
+        self.rep_telegram_id = rep_telegram_id
+        self.calendar_aware_scheduler = None
 
-        # Log mode
+        # Initialize calendar-aware scheduler if calendar connector is available
+        if (calendar_connector and rep_telegram_id and
+            CalendarAwareScheduler is not None and
+            calendar_connector.is_connected(rep_telegram_id)):
+            from rich.console import Console
+            Console().print("[green]SchedulingTool: Calendar-aware scheduling ENABLED[/green]")
+            self.calendar_aware_scheduler = CalendarAwareScheduler(
+                calendar_connector=calendar_connector,
+                telegram_id=rep_telegram_id
+            )
+        else:
+            from rich.console import Console
+            Console().print("[yellow]SchedulingTool: Using mock slot generation[/yellow]")
+
+        # Log Zoom mode
         if self.zoom_service and self.zoom_service.enabled:
             from rich.console import Console
             Console().print("[green]SchedulingTool: Zoom integration ENABLED[/green]")
@@ -116,12 +150,21 @@ class SchedulingTool:
         Get available time slots formatted for user consumption.
 
         Returns human-readable Russian text listing available slots.
+        Uses calendar-aware scheduling if enabled, otherwise falls back to mock slots.
         """
         from_date = preferred_date or date.today()
-        available_slots = self.calendar.get_available_slots(
-            from_date=from_date,
-            days=days
-        )
+
+        # Use calendar-aware scheduler if available, otherwise use SalesCalendar
+        if self.calendar_aware_scheduler:
+            available_slots = self.calendar_aware_scheduler.get_available_slots(
+                from_date=from_date,
+                days=days
+            )
+        else:
+            available_slots = self.calendar.get_available_slots(
+                from_date=from_date,
+                days=days
+            )
 
         # Filter out past slots for today
         now = datetime.now()

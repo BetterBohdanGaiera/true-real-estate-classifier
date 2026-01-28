@@ -71,6 +71,10 @@ services:
       DATABASE_URL: postgresql://sales_agent:${POSTGRES_PASSWORD:-changeme}@postgres:5432/sales_agent
       # Timezone for scheduling (Bali/Indonesia)
       TZ: Asia/Makassar
+      # Per-rep mode (optional)
+      # Set to Telegram ID of registered sales rep to run daemon for specific rep
+      # Leave empty or unset to use default mode (user.session)
+      REP_TELEGRAM_ID: ${REP_TELEGRAM_ID:-}
     env_file:
       # Load additional environment variables from project root .env
       # Includes: ANTHROPIC_API_KEY, LOG_LEVEL, etc.
@@ -81,6 +85,8 @@ services:
       - ${HOME}/.telegram_dl:/root/.telegram_dl:rw
       # Mount Zoom credentials (optional, for Zoom meeting scheduling)
       - ${HOME}/.zoom_credentials:/root/.zoom_credentials:ro
+      # Mount sales registry for per-rep calendar tokens (optional)
+      - ${HOME}/.sales_registry:/root/.sales_registry:ro
       # Mount Google Calendar credentials (optional, for calendar integration)
       - ../../.claude/skills/google-calendar/accounts:/app/.claude/skills/google-calendar/accounts:ro
       # Mount knowledge base (optional, for AI knowledge)
@@ -90,6 +96,12 @@ services:
       - ../../.claude/skills/how-to-communicate:/app/.claude/skills/how-to-communicate:ro
       # Mount config directory (for prospects.json and agent_config.json)
       - ../../src/sales_agent/config:/app/src/sales_agent/config
+    command: >
+      sh -c "if [ -n \"$$REP_TELEGRAM_ID\" ]; then
+        python src/sales_agent/daemon.py --rep-telegram-id $$REP_TELEGRAM_ID;
+      else
+        python src/sales_agent/daemon.py;
+      fi"
     restart: unless-stopped
     logging:
       driver: "json-file"

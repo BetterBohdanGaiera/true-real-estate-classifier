@@ -72,8 +72,14 @@ htmlcov/
 # ============================================================================
 # Documentation and Spec Files
 # ============================================================================
-*.md
-!CLAUDE.md
+# Exclude docs but keep knowledge base and skill references
+/docs/*.md
+/specs/*.md
+/follow_up.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE.md
+# Keep: knowledge_base_final/*.md, .claude/skills/**/*.md, CLAUDE.md
 
 # ============================================================================
 # Environment and Config Files (handled separately)

@@ -52,8 +52,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     # Add virtual environment to PATH
     PATH="/app/.venv/bin:$PATH" \
-    # Set Python path for imports
-    PYTHONPATH="/app/src:/app/.claude/skills/telegram/scripts"
+    # Set Python path for imports (telegram_fetch now in src/sales_agent/telegram/)
+    PYTHONPATH="/app/src"
 
 # Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -72,19 +72,16 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages/uv* /usr/local/lib/p
 # Copy pyproject.toml and uv.lock (needed for uv run)
 COPY pyproject.toml uv.lock ./
 
-# Copy application source code
+# Copy application source code (includes telegram_fetch after refactoring)
 COPY src/ ./src/
 
-# Copy skills directories (required for tone-of-voice, how-to-communicate, telegram_fetch)
+# Copy skills directories (tone-of-voice, how-to-communicate for agent prompts)
+# Note: telegram_fetch is now in src/sales_agent/telegram/, no longer needs separate copy
 COPY .claude/skills/tone-of-voice/ ./.claude/skills/tone-of-voice/
 COPY .claude/skills/how-to-communicate/ ./.claude/skills/how-to-communicate/
-COPY .claude/skills/telegram/scripts/ ./.claude/skills/telegram/scripts/
 
 # Copy knowledge base
 COPY knowledge_base_final/ ./knowledge_base_final/
-
-# Copy migrations
-COPY src/sales_agent/migrations/ ./src/sales_agent/migrations/
 
 # Create directories for credentials (will be mounted as volumes)
 RUN mkdir -p /root/.telegram_dl /root/.zoom_credentials
@@ -106,5 +103,5 @@ LABEL org.opencontainers.image.title="Telegram Agent Daemon" \
       org.opencontainers.image.vendor="True Real Estate" \
       org.opencontainers.image.source="https://github.com/TrueRealEstate/Classifier"
 
-# Run the daemon using uv
-CMD ["uv", "run", "python", "src/sales_agent/daemon.py"]
+# Run the daemon (venv python is already on PATH)
+CMD ["python", "src/sales_agent/daemon.py"]

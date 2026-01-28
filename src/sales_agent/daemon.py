@@ -33,6 +33,9 @@ from sales_agent.scheduling import (
 # Import database initialization
 from sales_agent.database import init_database
 
+# Import Calendar Connector for Google Calendar integration
+from sales_agent.registry.calendar_connector import CalendarConnector
+
 # Import Zoom booking service (optional)
 try:
     from sales_agent.zoom import ZoomBookingService
@@ -165,6 +168,21 @@ class TelegramDaemon:
         available_slots = len(self.sales_calendar.get_available_slots())
         console.print(f"  [green]✓[/green] Sales calendar initialized ({available_slots} slots available)")
 
+        # Initialize Calendar Connector for per-rep mode (optional)
+        calendar_connector = None
+        if self.rep_telegram_id:
+            from sales_agent.registry.sales_rep_manager import get_by_telegram_id
+            rep = await get_by_telegram_id(self.rep_telegram_id)
+            if rep and rep.calendar_connected:
+                calendar_connector = CalendarConnector()
+                if calendar_connector.enabled:
+                    console.print(f"  [green]✓[/green] Real calendar integration enabled for {rep.name}")
+                else:
+                    console.print(f"  [yellow]⚠[/yellow] Google Calendar credentials not configured (using mock slots)")
+                    calendar_connector = None
+            elif rep:
+                console.print(f"  [yellow]⚠[/yellow] Calendar not connected for {rep.name} (using mock slots)")
+
         # Initialize Zoom booking service (optional)
         zoom_service = None
         if ZoomBookingService is not None:
@@ -177,8 +195,13 @@ class TelegramDaemon:
         else:
             console.print(f"  [yellow]⚠[/yellow] Zoom module not available (mock mode)")
 
-        # Initialize scheduling tool with optional Zoom service
-        self.scheduling_tool = SchedulingTool(self.sales_calendar, zoom_service=zoom_service)
+        # Initialize scheduling tool with optional calendar connector and Zoom service
+        self.scheduling_tool = SchedulingTool(
+            self.sales_calendar,
+            zoom_service=zoom_service,
+            calendar_connector=calendar_connector,
+            rep_telegram_id=self.rep_telegram_id
+        )
         console.print(f"  [green]✓[/green] Scheduling tool ready")
 
         # Initialize scheduled action manager (imports are module-level functions)
