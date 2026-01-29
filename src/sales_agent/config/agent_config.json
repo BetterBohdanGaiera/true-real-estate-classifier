@@ -29,5 +29,31 @@
   ],
   "escalation_notify": null,
   "typing_simulation": true,
-  "auto_follow_up_hours": 24
+  "auto_follow_up_hours": 24,
+  "batch_enabled": true,
+  "batch_timeout_short": [2.0, 3.0],
+  "batch_timeout_medium": [3.0, 5.0],
+  "batch_timeout_long": [5.0, 8.0],
+  "batch_max_messages": 10,
+  "batch_max_wait_seconds": 30.0,
+  "followup_polling": {
+    "poll_interval_seconds": 30,
+    "batch_size": 10,
+    "preemptive_window_seconds": 5,
+    "execution_timeout_seconds": 300,
+    "max_retries": 3,
+    "retry_delay_seconds": 60
+  },
+  "human_polish": {
+    "max_message_length": 500,
+    "target_message_length": 150,
+    "warn_at_length": 300,
+    "timing_mode": "natural",
+    "min_delay_seconds": 1.0,
+    "max_delay_seconds": 15.0,
+    "enable_typos": false,
+    "typo_probability": 0.05,
+    "prefer_short_responses": true,
+    "split_long_messages": false
+  }
 }

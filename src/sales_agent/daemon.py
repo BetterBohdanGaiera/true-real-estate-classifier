@@ -7,9 +7,11 @@ Integrates with scheduling system for Zoom meeting bookings.
 import argparse
 import asyncio
 import json
+import random
 import signal
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
@@ -30,8 +32,17 @@ from sales_agent.scheduling import (
     scheduled_action_manager,
 )
 
+# Import message batching
+from sales_agent.messaging import MessageBuffer, BufferedMessage
+
 # Import database initialization
 from sales_agent.database import init_database
+
+# Import media handling
+from sales_agent.media import VoiceTranscriber, detect_media_type, MediaDetectionResult
+
+# Import temporal detection
+from sales_agent.temporal import detect_pause, PauseDetector
 
 # Import Calendar Connector for Google Calendar integration
 from sales_agent.registry.calendar_connector import CalendarConnector
@@ -76,6 +87,7 @@ class TelegramDaemon:
         self.rep_telegram_id = rep_telegram_id
         self.client = None
         self.service = None
+        self.voice_transcriber: Optional[VoiceTranscriber] = None
         self.agent = None
         self.prospect_manager = None
         self.config = None
@@ -86,6 +98,7 @@ class TelegramDaemon:
         self.action_manager = None  # Not used directly, but signals intent
         self.bot_user_id = None  # Telegram ID of the bot account
         self.bot_username = None  # Username of the bot account
+        self.message_buffer = None  # Initialized in initialize()
         self.running = False
         self.stats = {
             "messages_sent": 0,
@@ -93,6 +106,8 @@ class TelegramDaemon:
             "escalations": 0,
             "meetings_scheduled": 0,
             "scheduled_followups": 0,
+            "messages_batched": 0,
+            "batches_processed": 0,
             "started_at": None
         }
 
@@ -223,6 +238,24 @@ class TelegramDaemon:
         )
         console.print(f"  [green]✓[/green] Claude agent ready (with tone-of-voice + how-to-communicate + knowledge base)")
 
+        # Initialize voice transcriber (optional - requires ELEVENLABS_API_KEY)
+        try:
+            self.voice_transcriber = VoiceTranscriber()
+            console.print(f"  [green]✓[/green] Voice transcription enabled (ElevenLabs)")
+        except ValueError as e:
+            self.voice_transcriber = None
+            console.print(f"  [yellow]![/yellow] Voice transcription disabled: {e}")
+
+        # Initialize message buffer with flush callback
+        self.message_buffer = MessageBuffer(
+            timeout_range=self.config.batch_timeout_medium,
+            flush_callback=self._process_message_batch,
+            max_messages=self.config.batch_max_messages,
+            max_wait_seconds=self.config.batch_max_wait_seconds
+        )
+        batch_status = "enabled" if self.config.batch_enabled else "disabled"
+        console.print(f"  [green]✓[/green] Message buffer initialized (batching {batch_status})")
+
         # Register message handler
         self._register_handlers()
         console.print(f"  [green]✓[/green] Message handlers registered")
@@ -241,6 +274,351 @@ class TelegramDaemon:
             with open(AGENT_CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(config.model_dump(), f, indent=2, ensure_ascii=False)
             return config
+
+    def _aggregate_messages(self, messages: list[BufferedMessage]) -> str:
+        """Combine multiple messages into single context for AI.
+
+        If single message: return as-is
+        If multiple: format with timestamps
+        """
+        if len(messages) == 1:
+            return messages[0].text
+
+        # Format multiple messages with timestamps
+        lines = []
+        for msg in messages:
+            time_str = msg.timestamp.strftime("%H:%M")
+            lines.append(f"[{time_str}] {msg.text}")
+
+        return "\n".join(lines)
+
+    def _calculate_batch_reading_delay(self, total_length: int) -> float:
+        """Calculate reading delay for batched messages.
+
+        Uses same logic as TelegramService but for total batch length.
+        """
+        if total_length < 50:
+            delay_range = self.config.reading_delay_short
+        elif total_length <= 200:
+            delay_range = self.config.reading_delay_medium
+        else:
+            delay_range = self.config.reading_delay_long
+
+        return random.uniform(*delay_range)
+
+    async def _process_message_batch(
+        self,
+        prospect_id: str,
+        messages: list[BufferedMessage]
+    ) -> None:
+        """Process a batch of messages from one prospect.
+
+        Called by MessageBuffer when timer expires.
+        """
+        # 1. Get prospect
+        prospect = self.prospect_manager.get_prospect(int(prospect_id))
+        if not prospect:
+            console.print(f"[red]Unknown prospect {prospect_id} in batch[/red]")
+            return
+
+        console.print(f"\n[cyan]Processing batch of {len(messages)} message(s) from {prospect.name}[/cyan]")
+
+        # Update stats
+        self.stats["batches_processed"] += 1
+        self.stats["messages_batched"] += len(messages)
+
+        # 2. Messages already recorded in handle_incoming, so skip re-recording
+
+        # 3. Cancel pending follow-ups (once, not per message)
+        try:
+            pending_actions = await get_pending_actions(str(prospect.telegram_id))
+            pending_ids = [action.id for action in pending_actions]
+
+            cancelled = await cancel_pending_for_prospect(
+                str(prospect.telegram_id),
+                reason="client_responded"
+            )
+
+            if self.scheduler_service and pending_ids:
+                for action_id in pending_ids:
+                    await self.scheduler_service.cancel_action(action_id)
+
+            if cancelled > 0:
+                console.print(f"[dim]Cancelled {cancelled} pending follow-up(s)[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not cancel actions: {e}[/yellow]")
+
+        # 4. Check rate limits
+        messages_today = self.prospect_manager.get_messages_sent_today(prospect.telegram_id)
+        if not self.agent.check_rate_limit(prospect, messages_today):
+            console.print(f"[yellow]Rate limit reached for {prospect.name}, skipping batch[/yellow]")
+            return
+
+        # 5. Check working hours
+        if not self.agent.is_within_working_hours():
+            console.print(f"[yellow]Outside working hours, skipping batch[/yellow]")
+            return
+
+        # 6. Aggregate messages for AI
+        combined_text = self._aggregate_messages(messages)
+
+        # 7. Calculate reading delay for TOTAL text
+        total_length = sum(len(m.text) for m in messages)
+        reading_delay = self._calculate_batch_reading_delay(total_length)
+        console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {total_length} total chars[/dim]")
+        await asyncio.sleep(reading_delay)
+
+        # 8. Get context and generate SINGLE response
+        context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+
+        try:
+            action = await self.agent.generate_response(
+                prospect,
+                combined_text,  # All messages as one
+                context
+            )
+
+            console.print(f"[dim]Agent decision: {action.action} - {action.reason}[/dim]")
+
+            # 9. Handle action (same logic as non-batched handle_incoming)
+
+            # Handle check_availability action
+            if action.action == "check_availability":
+                # Get available slots
+                availability_text = self.scheduling_tool.get_available_times(days=7)
+
+                # Send availability to user
+                result = await self.service.send_message(
+                    prospect.telegram_id,
+                    availability_text
+                )
+
+                # Record in conversation history so agent knows what was shown
+                if result.get("sent"):
+                    self.stats["messages_sent"] += 1
+                    self.prospect_manager.record_agent_message(
+                        prospect.telegram_id,
+                        result["message_id"],
+                        availability_text
+                    )
+
+                console.print(f"[cyan]-> Sent availability to {prospect.name}[/cyan]")
+
+                # Update prospect to show we're in scheduling mode
+                self.prospect_manager.update_status(
+                    prospect.telegram_id,
+                    ProspectStatus.IN_CONVERSATION
+                )
+
+            # Handle schedule action
+            elif action.action == "schedule" and action.scheduling_data:
+                slot_id = action.scheduling_data.get("slot_id")
+                client_email = action.scheduling_data.get("email", "")
+                topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
+
+                if not slot_id:
+                    console.print(f"[red]Schedule action missing slot_id[/red]")
+                    return
+
+                # STRICT: Email is REQUIRED for booking
+                if not client_email or not client_email.strip():
+                    error_msg = "Для записи на встречу нужен email. На какой адрес отправить приглашение?"
+                    send_result = await self.service.send_message(prospect.telegram_id, error_msg)
+                    # Record so agent knows email was requested
+                    if send_result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            send_result["message_id"],
+                            error_msg
+                        )
+                    console.print(f"[yellow]Schedule rejected - no email provided[/yellow]")
+                    return
+
+                # Store email in prospect record
+                self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
+
+                # Book the meeting
+                booking_result = self.scheduling_tool.book_meeting(
+                    slot_id=slot_id,
+                    prospect=prospect,
+                    client_email=client_email.strip(),
+                    topic=topic
+                )
+
+                if booking_result.success:
+                    # Send confirmation
+                    send_result = await self.service.send_message(
+                        prospect.telegram_id,
+                        booking_result.message
+                    )
+
+                    # Record confirmation in history
+                    if send_result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            send_result["message_id"],
+                            booking_result.message
+                        )
+
+                    # Update prospect status
+                    self.prospect_manager.update_status(
+                        prospect.telegram_id,
+                        ProspectStatus.ZOOM_SCHEDULED
+                    )
+
+                    # Update stats
+                    self.stats["meetings_scheduled"] += 1
+
+                    console.print(f"[green]Meeting scheduled for {prospect.name}: {slot_id} (email: {client_email})[/green]")
+                else:
+                    # Send error message
+                    send_result = await self.service.send_message(
+                        prospect.telegram_id,
+                        booking_result.message
+                    )
+                    # Record error in history
+                    if send_result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            send_result["message_id"],
+                            booking_result.message
+                        )
+                    console.print(f"[red]Scheduling failed: {booking_result.error}[/red]")
+
+            # Handle schedule_followup action
+            elif action.action == "schedule_followup" and action.scheduling_data:
+                try:
+                    # Parse scheduled time from ISO 8601
+                    follow_up_time_str = action.scheduling_data.get("follow_up_time")
+                    scheduled_for = datetime.fromisoformat(follow_up_time_str)
+
+                    # Create scheduled action in database
+                    scheduled_action = await create_scheduled_action(
+                        prospect_id=str(prospect.telegram_id),
+                        action_type=ScheduledActionType.FOLLOW_UP,
+                        scheduled_for=scheduled_for,
+                        payload={
+                            "follow_up_intent": action.scheduling_data.get("follow_up_intent"),
+                            "reason": action.scheduling_data.get("reason"),
+                            "original_context_snapshot": context[:1000]
+                        }
+                    )
+
+                    # Schedule with APScheduler
+                    await self.scheduler_service.schedule_action(scheduled_action)
+
+                    # Update stats
+                    self.stats["scheduled_followups"] += 1
+
+                    console.print(f"[cyan]Scheduled follow-up for {prospect.name} at {scheduled_for.strftime('%Y-%m-%d %H:%M')}[/cyan]")
+
+                    # Always send confirmation - use agent's text or generate fallback
+                    confirmation = action.message
+
+                    # SAFETY: Check for leaked reasoning in confirmation
+                    if confirmation:
+                        reasoning_patterns = ["Клиент ", "Это запрос", "schedule_followup", "нужно использовать", "follow-up" if len(confirmation) > 80 else ""]
+                        if any(p and p in confirmation for p in reasoning_patterns):
+                            console.print(f"[yellow]Detected leaked reasoning in confirmation, using fallback[/yellow]")
+                            confirmation = None
+
+                    if not confirmation:
+                        # Calculate human-friendly time description
+                        import pytz
+                        bali_tz = pytz.timezone("Asia/Makassar")
+                        now = datetime.now(bali_tz)
+                        scheduled_local = scheduled_for.astimezone(bali_tz)
+
+                        delta = scheduled_local - now
+                        minutes = int(delta.total_seconds() / 60)
+
+                        # Generate natural time expression
+                        if minutes <= 5:
+                            time_expr = "через 5 минут"
+                        elif minutes <= 10:
+                            time_expr = "минут через 10"
+                        elif minutes <= 15:
+                            time_expr = "минут через 15"
+                        elif minutes <= 30:
+                            time_expr = "через полчаса"
+                        elif minutes <= 60:
+                            time_expr = "через час"
+                        elif minutes <= 120:
+                            time_expr = "через пару часов"
+                        elif scheduled_local.date() == now.date():
+                            # Same day - round to nearest half hour
+                            rounded_hour = scheduled_local.hour
+                            rounded_min = 30 if scheduled_local.minute >= 15 and scheduled_local.minute < 45 else 0
+                            if scheduled_local.minute >= 45:
+                                rounded_hour += 1
+                                rounded_min = 0
+                            time_expr = f"около {rounded_hour}:{rounded_min:02d}"
+                        elif (scheduled_local.date() - now.date()).days == 1:
+                            time_expr = "завтра"
+                        else:
+                            # Fallback to day of week
+                            days_ru = ["в понедельник", "во вторник", "в среду", "в четверг", "в пятницу", "в субботу", "в воскресенье"]
+                            time_expr = days_ru[scheduled_local.weekday()]
+
+                        confirmation = f"Хорошо, напишу {time_expr}!"
+
+                    result = await self.service.send_message(
+                        prospect.telegram_id,
+                        confirmation
+                    )
+
+                    if result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            result["message_id"],
+                            confirmation
+                        )
+                        console.print(f"[green]-> Confirmation sent to {prospect.name}[/green]")
+
+                except Exception as e:
+                    console.print(f"[red]Failed to schedule follow-up: {e}[/red]")
+
+            # Handle reply action
+            elif action.action == "reply" and action.message:
+                # Send response
+                result = await self.service.send_message(
+                    prospect.telegram_id,
+                    action.message
+                )
+
+                if result.get("sent"):
+                    self.stats["messages_sent"] += 1
+                    self.prospect_manager.record_agent_message(
+                        prospect.telegram_id,
+                        result["message_id"],
+                        action.message
+                    )
+                    console.print(f"[green]-> Sent to {prospect.name}:[/green] {action.message[:100]}...")
+                else:
+                    console.print(f"[red]Failed to send: {result.get('error')}[/red]")
+
+            # Handle escalate action
+            elif action.action == "escalate":
+                self.stats["escalations"] += 1
+                console.print(f"[yellow]Escalated: {action.reason}[/yellow]")
+
+                # Notify if configured
+                if self.config.escalation_notify:
+                    # Use the last message text from the batch for context
+                    last_message_text = messages[-1].text if messages else ""
+                    await self.service.notify_escalation(
+                        self.config.escalation_notify,
+                        prospect.name,
+                        action.reason,
+                        last_message_text
+                    )
+
+        except Exception as e:
+            console.print(f"[red]Error processing batch: {e}[/red]")
 
     def _register_handlers(self) -> None:
         """Register Telegram event handlers."""
@@ -281,15 +659,72 @@ class TelegramDaemon:
             if not prospect:
                 return
 
-            self.stats["messages_received"] += 1
-            console.print(f"\n[cyan]← Received from {prospect.name}:[/cyan] {event.text[:100]}...")
+            # Detect media type BEFORE accessing event.text (prevents crash on None)
+            media_result = detect_media_type(event)
+            message_text = event.text or ""
 
-            # Record the response
+            # Handle voice messages - transcribe to text
+            if media_result.media_type == "voice" and self.voice_transcriber:
+                try:
+                    console.print(f"[cyan]Transcribing voice from {prospect.name}...[/cyan]")
+                    transcription = await self.voice_transcriber.transcribe_telegram_voice(
+                        self.client, event.message
+                    )
+                    message_text = transcription.text
+                    console.print(f"[green]Transcribed:[/green] {message_text[:100]}...")
+                except Exception as e:
+                    console.print(f"[yellow]Transcription failed: {e}[/yellow]")
+                    message_text = "[Голосовое сообщение]"
+
+            # Handle other media types
+            elif media_result.has_media and not message_text:
+                if media_result.media_type == "sticker":
+                    emoji = media_result.file_name or ""
+                    message_text = f"[Стикер: {emoji}]"
+                elif media_result.media_type == "photo":
+                    message_text = "[Фото]"
+                elif media_result.media_type == "video":
+                    message_text = "[Видео]"
+                elif media_result.media_type == "document":
+                    message_text = "[Документ]"
+                else:
+                    message_text = f"[{media_result.media_type}]"
+
+            # Safe logging
+            display_text = message_text[:100] if message_text else "[пустое сообщение]"
+            console.print(f"\n[cyan]<- Received from {prospect.name}:[/cyan] {display_text}...")
+
+            self.stats["messages_received"] += 1
+
+            # Detect conversation pause
+            gap = detect_pause(
+                prospect.last_contact,
+                prospect.last_response,
+                datetime.now()
+            )
+            if gap.hours >= 24:
+                console.print(f"[dim]Conversation gap: {gap.hours:.0f}h ({gap.pause_type.value})[/dim]")
+
+            # Record the response (using processed message_text, not event.text)
             self.prospect_manager.record_response(
                 prospect.telegram_id,
                 event.id,
-                event.text
+                message_text
             )
+
+            # Buffer message if batching enabled
+            if self.config.batch_enabled:
+                buffered_msg = BufferedMessage(
+                    message_id=event.id,
+                    text=message_text,
+                    timestamp=datetime.now()
+                )
+                await self.message_buffer.add_message(
+                    str(prospect.telegram_id),
+                    buffered_msg
+                )
+                console.print(f"[dim]Buffered message from {prospect.name}, waiting for more...[/dim]")
+                return  # Don't process immediately - _process_message_batch will handle it
 
             # Cancel pending follow-ups when client responds
             try:
@@ -328,15 +763,15 @@ class TelegramDaemon:
             context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
             # Simulate reading delay (proportional to incoming message length)
-            reading_delay = self.service._calculate_reading_delay(event.text or "")
-            console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {len(event.text or '')} chars[/dim]")
+            reading_delay = self.service._calculate_reading_delay(message_text)
+            console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {len(message_text)} chars[/dim]")
             await asyncio.sleep(reading_delay)
 
             # Generate response
             try:
                 action = await self.agent.generate_response(
                     prospect,
-                    event.text,
+                    message_text,
                     context
                 )
 
@@ -564,7 +999,7 @@ class TelegramDaemon:
                 # Handle escalate action
                 elif action.action == "escalate":
                     self.stats["escalations"] += 1
-                    console.print(f"[yellow]⚠ Escalated: {action.reason}[/yellow]")
+                    console.print(f"[yellow]Escalated: {action.reason}[/yellow]")
 
                     # Notify if configured
                     if self.config.escalation_notify:
@@ -572,11 +1007,40 @@ class TelegramDaemon:
                             self.config.escalation_notify,
                             prospect.name,
                             action.reason,
-                            event.text
+                            message_text
                         )
 
             except Exception as e:
                 console.print(f"[red]Error processing message: {e}[/red]")
+
+        @self.client.on(events.MessageEdited(incoming=True))
+        async def handle_message_edited(event):
+            """Handle edited messages from prospects."""
+            if not event.is_private:
+                return
+            sender = await event.get_sender()
+            if not sender:
+                return
+            prospect = self.prospect_manager.get_prospect(sender.id)
+            if not prospect:
+                return
+            console.print(f"[yellow]Edited by {prospect.name}:[/yellow] {(event.text or '')[:50]}...")
+            self.prospect_manager.mark_message_edited(
+                prospect.telegram_id,
+                event.id,
+                new_text=event.text or "",
+                edited_at=datetime.now()
+            )
+
+        @self.client.on(events.MessageDeleted)
+        async def handle_message_deleted(event):
+            """Handle deleted messages."""
+            for msg_id in event.deleted_ids:
+                for prospect in self.prospect_manager.get_all_prospects():
+                    if self.prospect_manager.has_message(prospect.telegram_id, msg_id):
+                        console.print(f"[red]Deleted msg {msg_id} by {prospect.name}[/red]")
+                        self.prospect_manager.mark_message_deleted(prospect.telegram_id, msg_id)
+                        break
 
     async def process_new_prospects(self) -> None:
         """Send initial messages to new prospects."""
@@ -779,6 +1243,8 @@ class TelegramDaemon:
 
         table.add_row("Messages Sent", str(self.stats["messages_sent"]))
         table.add_row("Messages Received", str(self.stats["messages_received"]))
+        table.add_row("Messages Batched", str(self.stats.get("messages_batched", 0)))
+        table.add_row("Batches Processed", str(self.stats.get("batches_processed", 0)))
         table.add_row("Meetings Scheduled", str(self.stats["meetings_scheduled"]))
         table.add_row("Scheduled Follow-ups", str(self.stats.get("scheduled_followups", 0)))
         table.add_row("Escalations", str(self.stats["escalations"]))
@@ -834,6 +1300,14 @@ class TelegramDaemon:
         self.running = False
         console.print("[yellow]Shutting down...[/yellow]")
 
+        # Flush all pending message buffers before shutdown
+        if self.message_buffer:
+            pending = self.message_buffer.get_all_pending_prospect_ids()
+            if pending:
+                console.print(f"[cyan]Flushing {len(pending)} pending buffer(s)...[/cyan]")
+                await self.message_buffer.flush_all()
+                console.print("[green]Message buffers flushed[/green]")
+
         # Stop scheduler
         if self.scheduler_service:
             await self.scheduler_service.stop()
@@ -856,6 +1330,8 @@ class TelegramDaemon:
             f"Messages Received: {self.stats['messages_received']}\n"
             f"Meetings Scheduled: {self.stats['meetings_scheduled']}\n"
             f"Scheduled Follow-ups: {self.stats.get('scheduled_followups', 0)}\n"
+            f"Messages Batched: {self.stats.get('messages_batched', 0)}\n"
+            f"Batches Processed: {self.stats.get('batches_processed', 0)}\n"
             f"Escalations: {self.stats['escalations']}",
             title="Session Summary"
         ))

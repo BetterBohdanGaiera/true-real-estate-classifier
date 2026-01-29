@@ -45,7 +45,17 @@ class ProspectManager:
                         id=m["id"],
                         sender=m["sender"],
                         text=m["text"],
-                        timestamp=datetime.fromisoformat(m["timestamp"])
+                        timestamp=datetime.fromisoformat(m["timestamp"]),
+                        # Message event fields with backward-compatible defaults
+                        is_edited=m.get("is_edited", False),
+                        edited_at=datetime.fromisoformat(m["edited_at"]) if m.get("edited_at") else None,
+                        original_text=m.get("original_text"),
+                        is_deleted=m.get("is_deleted", False),
+                        deleted_at=datetime.fromisoformat(m["deleted_at"]) if m.get("deleted_at") else None,
+                        is_forwarded=m.get("is_forwarded", False),
+                        forward_from=m.get("forward_from"),
+                        reply_to_id=m.get("reply_to_id"),
+                        reply_to_text=m.get("reply_to_text"),
                     )
                     for m in p_data["conversation_history"]
                 ]
@@ -68,7 +78,17 @@ class ProspectManager:
                             "id": m.id,
                             "sender": m.sender,
                             "text": m.text,
-                            "timestamp": m.timestamp.isoformat()
+                            "timestamp": m.timestamp.isoformat(),
+                            # Message event fields
+                            "is_edited": m.is_edited,
+                            "edited_at": m.edited_at.isoformat() if m.edited_at else None,
+                            "original_text": m.original_text,
+                            "is_deleted": m.is_deleted,
+                            "deleted_at": m.deleted_at.isoformat() if m.deleted_at else None,
+                            "is_forwarded": m.is_forwarded,
+                            "forward_from": m.forward_from,
+                            "reply_to_id": m.reply_to_id,
+                            "reply_to_text": m.reply_to_text,
                         }
                         for m in p.conversation_history
                     ]
@@ -299,6 +319,85 @@ class ProspectManager:
             return False
 
         return prospect.human_active
+
+    def has_message(self, telegram_id: int | str, message_id: int) -> bool:
+        """
+        Check if a message exists in prospect's conversation history.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+            message_id: Message ID to check for
+
+        Returns:
+            True if message exists in history, False otherwise
+        """
+        prospect = self.get_prospect(telegram_id)
+        if not prospect:
+            return False
+        return any(m.id == message_id for m in prospect.conversation_history)
+
+    def mark_message_edited(
+        self,
+        telegram_id: int | str,
+        message_id: int,
+        new_text: str,
+        edited_at: datetime
+    ) -> None:
+        """
+        Mark a message as edited and update its text.
+
+        Preserves the original text before the edit for reference.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+            message_id: Message ID that was edited
+            new_text: New text content after edit
+            edited_at: Timestamp when the edit occurred
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+        if not prospect:
+            return
+
+        for msg in prospect.conversation_history:
+            if msg.id == message_id:
+                # Preserve original text only on first edit
+                if msg.original_text is None:
+                    msg.original_text = msg.text
+                msg.text = new_text
+                msg.is_edited = True
+                msg.edited_at = edited_at
+                break
+
+        self._save_prospects()
+
+    def mark_message_deleted(
+        self,
+        telegram_id: int | str,
+        message_id: int
+    ) -> None:
+        """
+        Mark a message as deleted (don't remove, just flag).
+
+        The message content is preserved but flagged as deleted so the agent
+        knows the user removed it.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+            message_id: Message ID that was deleted
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+        if not prospect:
+            return
+
+        for msg in prospect.conversation_history:
+            if msg.id == message_id:
+                msg.is_deleted = True
+                msg.deleted_at = datetime.now()
+                break
+
+        self._save_prospects()
 
     def get_conversation_context(self, telegram_id: int | str, limit: int = 20) -> str:
         """Get formatted conversation history for LLM context."""

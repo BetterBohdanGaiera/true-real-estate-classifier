@@ -23,6 +23,7 @@ from sales_agent.telegram.telegram_fetch import (
 )
 
 from sales_agent.crm.models import AgentConfig
+from sales_agent.humanizer import NaturalTiming
 
 
 class TelegramService:
@@ -32,10 +33,17 @@ class TelegramService:
         self.client = client
         self.config = config or AgentConfig()
 
+        # Initialize natural timing for human-like delays
+        timing_mode = "natural"
+        if config and hasattr(config, 'human_polish') and config.human_polish:
+            timing_mode = config.human_polish.timing_mode
+        self.natural_timing = NaturalTiming(mode=timing_mode)
+
     async def send_message(
         self,
         telegram_id: int | str,
         text: str,
+        incoming_message: str = "",  # NEW: for timing calculation
         reply_to: Optional[int] = None
     ) -> dict:
         """Send a message with human-like delay and typing simulation."""
@@ -46,12 +54,14 @@ class TelegramService:
         if entity is None:
             return {"sent": False, "error": f"Could not resolve {telegram_id}"}
 
-        # Simulate typing (if enabled)
+        # Simulate typing (if enabled) with natural timing duration
         if self.config.typing_simulation:
+            typing_duration = self.natural_timing.get_typing_duration(len(text))
+            # The _simulate_typing method handles its own duration
             await self._simulate_typing(entity, text)
 
-        # Human-like delay before sending (scaled by message length)
-        delay = self._calculate_delay(text)
+        # Use natural timing based on both incoming and outgoing message
+        delay = self.natural_timing.get_delay(incoming_message, text)
         await asyncio.sleep(delay)
 
         # Send message
