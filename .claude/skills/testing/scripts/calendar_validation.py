@@ -33,12 +33,15 @@ Example:
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pytz
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -255,8 +258,9 @@ class CalendarValidator:
         """
         Check if event start has correct timezone.
 
-        Looks for timezone indicators in the event start string,
-        such as UTC offset (+08:00) or timezone name.
+        Google Calendar API may return events in UTC (Z suffix) even when
+        created with a specific timezone. This method accepts both the
+        explicit timezone offset and UTC format as valid.
 
         Args:
             event_start: Event start time string from API.
@@ -273,17 +277,20 @@ class CalendarValidator:
             # Fall back to dateTime field
             event_start = event_start.get("dateTime", "")
 
-        # Check for Makassar/WITA timezone indicators
+        # Google Calendar often returns times in UTC (Z suffix) for events
+        # that were created with a specific timezone. This is valid behavior.
+        # Accept both explicit timezone offset and UTC format.
         if expected_timezone in ("Asia/Makassar", "Asia/Jakarta"):
-            # Look for +08:00 offset or Makassar in timezone
+            # Accept +08:00 offset, Makassar name, or UTC (Z) format
             return (
                 "+08:00" in event_start
                 or "Makassar" in str(event_start)
                 or "+08" in event_start
+                or event_start.endswith("Z")  # UTC is also valid
             )
 
-        # Generic check
-        return expected_timezone in str(event_start)
+        # Generic check - accept explicit timezone or UTC
+        return expected_timezone in str(event_start) or event_start.endswith("Z")
 
     def _check_attendees(
         self,
@@ -326,11 +333,13 @@ class CalendarValidator:
         Check if event time matches proposed time within tolerance.
 
         Compares the event start time with the proposed time,
-        allowing for small differences (e.g., rounding to nearest 5 min).
+        properly handling timezone conversions. If the event is in UTC,
+        converts it to Bali timezone before comparing with the proposed time
+        (which is assumed to be in Bali timezone).
 
         Args:
             event: Calendar event dict with "start" key.
-            proposed_time: The time that was proposed to the client.
+            proposed_time: The time that was proposed to the client (in Bali TZ).
             tolerance_minutes: Maximum allowed difference in minutes.
 
         Returns:
@@ -343,44 +352,51 @@ class CalendarValidator:
             event_start = event_start.get("dateTime", "")
 
         try:
-            # Parse event time - use regex to extract datetime portion
-            if "T" in event_start:
-                # Match ISO 8601 datetime: YYYY-MM-DDTHH:MM:SS
-                # This regex captures the date and time, ignoring timezone
-                match = re.match(
-                    r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})",
-                    event_start
-                )
-                if match:
-                    time_part = match.group(1)
-                else:
-                    # Fallback: try to extract just the datetime portion
-                    # Remove Z suffix and any timezone offset (+HH:MM or -HH:MM)
-                    time_part = event_start.replace("Z", "")
-                    # Remove timezone offset if present (handles +08:00, -05:00, etc.)
-                    if "+" in time_part:
-                        time_part = time_part.split("+")[0]
-                    # For negative offsets, check if it's a timezone (after the T)
-                    elif "T" in time_part and time_part.count("-") > 2:
-                        # Split from the right to handle -05:00 style offsets
-                        parts = time_part.rsplit("-", 1)
-                        # Verify it's a timezone offset (format: HH:MM or HHMM)
-                        if len(parts[1]) in (4, 5):  # HH:MM or HHMM
-                            time_part = parts[0]
-
-                event_time = datetime.fromisoformat(time_part)
-            else:
+            if "T" not in event_start:
                 # All-day event
                 return False
 
-            # Compare times (ignoring timezone for simplicity)
-            proposed_naive = proposed_time.replace(tzinfo=None)
-            event_naive = event_time.replace(tzinfo=None)
+            bali_tz = self.CLIENT_TIMEZONES["bali"]
+            utc_tz = pytz.UTC
 
-            time_diff = abs((event_naive - proposed_naive).total_seconds())
+            # Parse event time with timezone awareness
+            if event_start.endswith("Z"):
+                # UTC format: 2026-02-04T05:00:00Z
+                time_part = event_start[:-1]  # Remove Z
+                event_time = datetime.fromisoformat(time_part)
+                event_time = utc_tz.localize(event_time)
+                # Convert UTC to Bali timezone for comparison
+                event_time_bali = event_time.astimezone(bali_tz)
+            elif "+" in event_start or (event_start.count("-") > 2 and "T" in event_start):
+                # Has timezone offset: 2026-02-04T13:00:00+08:00
+                # Python 3.11+ can parse this directly
+                try:
+                    event_time = datetime.fromisoformat(event_start)
+                    event_time_bali = event_time.astimezone(bali_tz)
+                except ValueError:
+                    # Fallback for older Python
+                    match = re.match(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", event_start)
+                    if match:
+                        time_part = match.group(1)
+                        event_time_bali = bali_tz.localize(datetime.fromisoformat(time_part))
+                    else:
+                        return False
+            else:
+                # No timezone info, assume Bali
+                event_time_bali = bali_tz.localize(datetime.fromisoformat(event_start))
+
+            # Make proposed time timezone-aware in Bali
+            if proposed_time.tzinfo is None:
+                proposed_time_bali = bali_tz.localize(proposed_time)
+            else:
+                proposed_time_bali = proposed_time.astimezone(bali_tz)
+
+            # Compare times in the same timezone
+            time_diff = abs((event_time_bali - proposed_time_bali).total_seconds())
             return time_diff <= tolerance_minutes * 60
 
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Time comparison failed: {e}")
             return False
 
     def convert_to_client_timezone(

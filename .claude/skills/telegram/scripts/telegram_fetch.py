@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-Telegram message fetcher for Claude Code skill.
-Fetches messages from Telegram with various filters and outputs.
+Telegram message fetcher for the sales agent.
+Provides Telethon client setup, message fetching, sending, and utility functions.
+
+Standalone script for Claude skills - can be used independently or imported.
+Migrated from: src/sales_agent/telegram/telegram_fetch.py
 """
 import asyncio
 import argparse
@@ -21,8 +24,9 @@ from telethon.errors import FloodWaitError
 CONFIG_DIR = Path.home() / '.telegram_dl'
 CONFIG_FILE = CONFIG_DIR / 'config.json'
 SESSION_FILE = CONFIG_DIR / 'user.session'
+SESSIONS_DIR = CONFIG_DIR / 'sessions'
 
-# Obsidian vault
+# Obsidian vault (optional, for standalone CLI usage)
 VAULT_PATH = Path.home() / 'Brains' / 'brain'
 
 
@@ -109,6 +113,84 @@ def get_status() -> Dict:
         }
     else:
         return get_setup_instructions()
+
+
+async def get_client_for_rep(session_name: str) -> TelegramClient:
+    """Get authenticated Telegram client for a specific rep's session.
+
+    Uses the shared api_id/api_hash from ~/.telegram_dl/config.json
+    but loads a per-rep session file from ~/.telegram_dl/sessions/{session_name}.session.
+
+    For backward compat, if session_name == 'user', uses the default ~/.telegram_dl/user.session.
+
+    Args:
+        session_name: Name of the session file (without .session extension).
+
+    Returns:
+        Authenticated TelegramClient.
+
+    Raises:
+        SystemExit: If not configured or session file missing.
+    """
+    if not is_configured():
+        print(json.dumps(get_setup_instructions(), indent=2))
+        sys.exit(1)
+
+    if session_name == 'user':
+        session_path = SESSION_FILE
+    else:
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        session_path = SESSIONS_DIR / f'{session_name}.session'
+
+    if not session_path.exists():
+        print(json.dumps({
+            "error": f"Session file not found: {session_path}",
+            "message": f"Run the registration script to create a session for '{session_name}'.",
+        }, indent=2))
+        sys.exit(1)
+
+    config = load_config()
+    client = TelegramClient(str(session_path), config["api_id"], config["api_hash"])
+    await client.start()
+    return client
+
+
+async def create_session(session_name: str, phone: str) -> dict:
+    """Create a new Telegram session via interactive phone auth.
+
+    Telethon will prompt for the verification code in the terminal.
+    The session file is stored at ~/.telegram_dl/sessions/{session_name}.session.
+
+    Args:
+        session_name: Name for the new session (e.g., 'rep_username').
+        phone: Phone number with country code (e.g., '+628123456789').
+
+    Returns:
+        Dict with account info: {'id': int, 'username': str, 'first_name': str}.
+    """
+    if not is_configured():
+        print(json.dumps(get_setup_instructions(), indent=2))
+        sys.exit(1)
+
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    session_path = SESSIONS_DIR / f'{session_name}.session'
+
+    config = load_config()
+    client = TelegramClient(str(session_path), config["api_id"], config["api_hash"])
+
+    # start() will interactively prompt for the verification code
+    await client.start(phone=phone)
+
+    me = await client.get_me()
+    info = {
+        'id': me.id,
+        'username': me.username,
+        'first_name': me.first_name,
+        'last_name': me.last_name,
+    }
+
+    await client.disconnect()
+    return info
 
 
 async def get_client() -> TelegramClient:

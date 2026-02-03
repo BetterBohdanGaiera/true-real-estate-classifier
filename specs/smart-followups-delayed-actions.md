@@ -10,7 +10,7 @@ Implement intelligent follow-up scheduling for the Telegram sales agent where:
 Enable the Telegram agent to understand natural language time expressions, persist scheduled actions, execute them automatically, and intelligently cancel them when the client responds first or a human takes over the conversation.
 
 ## Problem Statement
-The current Telegram agent has limitations:
+The current Telegrazm agent has limitations:
 - Fixed 24-hour follow-up interval (not conversational)
 - Cannot parse "напиши через 2 часа", "свяжись в воскресенье"
 - No persistent job storage (lost on daemon restart)

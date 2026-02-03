@@ -1,9 +1,107 @@
 ---
 name: telegram
-description: This skill should be used when fetching, searching, downloading, sending, or editing messages on Telegram. Use for queries like "show my Telegram messages", "search Telegram for...", "get unread messages", "send a message to...", "edit that message", or "add Telegram messages to my notes".
+description: Core sales agent system for Telegram. Use for running the sales daemon, fetching/sending messages, prospect outreach, and automated conversations. Queries like "run sales agent", "start telegram daemon", "show Telegram messages", "send message to prospect".
 ---
 
-# Telegram Message Skill
+# Telegram Sales Agent Skill
+
+The core sales agent system that handles prospect outreach and automated conversations via Telegram. This skill orchestrates communication with prospects, integrates with scheduling for Zoom meetings, and uses AI-powered responses following tone-of-voice guidelines.
+
+## Running the Telegram Agent Daemon
+
+The main entry point is the `daemon.py` script:
+
+```bash
+# Run daemon with default account (@BetterBohdan using user.session)
+PYTHONPATH=.claude/skills/telegram/scripts:.claude/skills/scheduling/scripts:.claude/skills/database/scripts:.claude/skills/eleven-labs/scripts:.claude/skills/humanizer/scripts:.claude/skills/zoom/scripts:.claude/skills/register-sales/scripts uv run python .claude/skills/telegram/scripts/daemon.py
+
+# Run daemon as a specific registered rep
+PYTHONPATH=.claude/skills/telegram/scripts:.claude/skills/scheduling/scripts:.claude/skills/database/scripts:.claude/skills/eleven-labs/scripts:.claude/skills/humanizer/scripts:.claude/skills/zoom/scripts:.claude/skills/register-sales/scripts uv run python .claude/skills/telegram/scripts/daemon.py --rep-telegram-id <TELEGRAM_ID>
+
+# Run daemon with verbose logging
+PYTHONPATH=.claude/skills/telegram/scripts:.claude/skills/scheduling/scripts:.claude/skills/database/scripts:.claude/skills/eleven-labs/scripts:.claude/skills/humanizer/scripts:.claude/skills/zoom/scripts:.claude/skills/register-sales/scripts uv run python .claude/skills/telegram/scripts/daemon.py --verbose
+```
+
+## Architecture
+
+The telegram skill is the core sales agent system that orchestrates:
+
+- **Communication Skills**: Loads tone-of-voice and how-to-communicate skills for message generation
+- **Scheduling**: Integrates with scheduling skill for follow-up management
+- **Database**: Uses database skill for persistence
+- **Media**: Uses eleven-labs skill for voice transcription
+- **Humanization**: Uses humanizer skill for natural timing
+- **Calendar**: Uses google-calendar skill via register-sales for availability
+- **Meetings**: Uses zoom skill for booking calls
+
+## Main Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Daemon | `daemon.py` | Main entry point, event loop, message handling |
+| Agent | `telegram_agent.py` | Claude AI agent with tool calling |
+| Knowledge Loader | `knowledge_loader.py` | Loads tone-of-voice and how-to-communicate skills |
+| Telegram Service | `telegram_service.py` | Telethon client wrapper with natural timing |
+| Telegram Fetch | `telegram_fetch.py` | Message fetching utilities |
+| Bot Send | `bot_send.py` | Bot API for sending messages |
+| Prospect Manager | `prospect_manager.py` | Prospect state management (JSON) |
+| Models | `models.py` | Pydantic models for all data structures |
+| Message Buffer | `message_buffer.py` | Message batching and debounce |
+| Pause Detector | `pause_detector.py` | Conversation gap detection |
+| Timezone Detector | `timezone_detector.py` | Client timezone estimation |
+| Phrase Tracker | `phrase_tracker.py` | Opening phrase variety |
+| Fact Extractor | `fact_extractor.py` | BANT fact extraction |
+| Context Summarizer | `context_summarizer.py` | Conversation summarization |
+| Sales Calendar | `sales_calendar.py` | Calendar slot management |
+| Scheduling Tool | `scheduling_tool.py` | Meeting booking interface |
+| Scheduler Service | `scheduler_service.py` | APScheduler integration |
+| Scheduled Action Manager | `scheduled_action_manager.py` | Database-backed action scheduling |
+
+## Configuration
+
+Config files are located at `.claude/skills/telegram/config/`:
+
+- `prospects.json` - Prospect state and conversation history
+- `agent_config.json` - Agent configuration (model, temperature, batching)
+- `sales_slots.json` - Available meeting slots
+- `sales_slots_data.json` - Meeting slot data
+
+## Environment Variables
+
+Required in `.env`:
+- `ANTHROPIC_API_KEY` - Claude API key
+- `DATABASE_URL` - PostgreSQL database URL
+- `TELETHON_API_ID` / `TELETHON_API_HASH` - Telegram API credentials
+
+Optional:
+- `ELEVENLABS_API_KEY` - For voice message transcription
+- `ZOOM_ACCOUNT_ID` / `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` - For Zoom integration
+
+## Integration with Other Skills
+
+The telegram daemon loads content from:
+- `tone-of-voice/` skill - Communication style guide
+- `how-to-communicate/` skill - Methodology (BANT, Zmeyeka)
+- `scheduling/` skill - Follow-up management
+- `database/` skill - Persistence
+- `eleven-labs/` skill - Voice transcription
+- `humanizer/` skill - Natural timing
+- `zoom/` skill - Meeting booking
+- `register-sales/` skill - Calendar integration, multi-account support
+
+## Testing
+
+```bash
+# Run conversation simulator
+PYTHONPATH=.claude/skills/telegram/scripts uv run python .claude/skills/telegram/scripts/conversation_simulator.py
+
+# Run conversation tests
+PYTHONPATH=.claude/skills/telegram/scripts uv run python .claude/skills/telegram/scripts/run_conversation_tests.py
+```
+
+---
+
+# Telegram Fetch Utility
 
 Fetch, search, download, and send Telegram messages with flexible filtering and output options.
 

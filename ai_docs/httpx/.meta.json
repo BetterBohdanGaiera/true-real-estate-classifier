@@ -1,0 +1,11 @@
+{
+  "library": "HTTPX",
+  "base_url": "https://www.python-httpx.org/",
+  "version": null,
+  "topic": null,
+  "fetched_at": "2026-01-27T14:38:27.088735+00:00",
+  "files": [
+    "index.md",
+    "quickstart.md"
+  ]
+}

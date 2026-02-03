@@ -1,0 +1,12 @@
+{
+  "library": "Anthropic",
+  "base_url": "https://docs.anthropic.com/en/docs/",
+  "version": null,
+  "topic": null,
+  "fetched_at": "2026-01-27T14:47:33.265453+00:00",
+  "files": [
+    "index.md",
+    "initial-setup.md",
+    "build-with-claude--prompt-engineering--overview.md"
+  ]
+}

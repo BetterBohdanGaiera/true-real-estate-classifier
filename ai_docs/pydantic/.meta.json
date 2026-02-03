@@ -1,0 +1,12 @@
+{
+  "library": "Pydantic",
+  "base_url": "https://docs.pydantic.dev/latest/",
+  "version": null,
+  "topic": null,
+  "fetched_at": "2026-01-27T14:37:35.828489+00:00",
+  "files": [
+    "index.md",
+    "concepts--models.md",
+    "concepts--fields.md"
+  ]
+}

@@ -1,6 +1,9 @@
 """
 Telegram Service wrapper for the agent.
 Handles all Telegram communication with human-like behavior.
+
+Standalone script for Claude skills - can be used independently or imported.
+Migrated from: src/sales_agent/telegram/telegram_service.py
 """
 import asyncio
 import random
@@ -13,7 +16,7 @@ from telethon.tl.types import User, Chat, Channel
 from telethon.tl.functions.messages import SetTypingRequest
 from telethon.tl.types import SendMessageTypingAction
 
-# Import config from existing telegram_fetch.py
+# Import from local telegram_fetch in the same package
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from telegram_fetch import (
@@ -25,7 +28,18 @@ from telegram_fetch import (
     load_config
 )
 
-from models import AgentConfig
+from models import AgentConfig, HumanPolishConfig
+
+# Try to import NaturalTiming from humanizer skill
+try:
+    # Add humanizer skill path
+    humanizer_path = Path(__file__).parent.parent.parent / "humanizer" / "scripts"
+    sys.path.insert(0, str(humanizer_path))
+    from natural_timing import NaturalTiming
+    HAS_NATURAL_TIMING = True
+except ImportError:
+    HAS_NATURAL_TIMING = False
+    NaturalTiming = None
 
 
 class TelegramService:
@@ -35,10 +49,19 @@ class TelegramService:
         self.client = client
         self.config = config or AgentConfig()
 
+        # Initialize natural timing for human-like delays if available
+        self.natural_timing = None
+        if HAS_NATURAL_TIMING:
+            timing_mode = "natural"
+            if config and hasattr(config, 'human_polish') and config.human_polish:
+                timing_mode = config.human_polish.timing_mode
+            self.natural_timing = NaturalTiming(mode=timing_mode)
+
     async def send_message(
         self,
         telegram_id: int | str,
         text: str,
+        incoming_message: str = "",  # For timing calculation
         reply_to: Optional[int] = None
     ) -> dict:
         """Send a message with human-like delay and typing simulation."""
@@ -53,8 +76,12 @@ class TelegramService:
         if self.config.typing_simulation:
             await self._simulate_typing(entity, text)
 
-        # Human-like delay before sending
-        delay = random.uniform(*self.config.response_delay_range)
+        # Use natural timing if available, otherwise fall back to config-based delay
+        if self.natural_timing:
+            delay = self.natural_timing.get_delay(incoming_message, text)
+        else:
+            delay = self._calculate_delay(text)
+
         await asyncio.sleep(delay)
 
         # Send message
@@ -73,12 +100,57 @@ class TelegramService:
         except Exception as e:
             return {"sent": False, "error": str(e)}
 
+    def _calculate_delay(self, text: str) -> float:
+        """Calculate response delay based on message length.
+
+        Delay tiers:
+        - Short (<50 chars): quick acknowledgments
+        - Medium (50-200 chars): standard responses
+        - Long (>200 chars): detailed explanations
+        """
+        text_length = len(text)
+
+        if text_length < 50:
+            delay_range = self.config.delay_short
+        elif text_length <= 200:
+            delay_range = self.config.delay_medium
+        else:
+            delay_range = self.config.delay_long
+
+        return random.uniform(*delay_range)
+
+    def _calculate_reading_delay(self, incoming_text: str) -> float:
+        """Calculate delay to simulate reading an incoming message.
+
+        Simulates human reading time before responding.
+        Uses reading_delay config fields based on incoming message length.
+
+        Delay tiers:
+        - Short (<50 chars): quick messages
+        - Medium (50-200 chars): standard messages
+        - Long (>200 chars): detailed messages
+        """
+        text_length = len(incoming_text) if incoming_text else 0
+
+        if text_length < 50:
+            delay_range = self.config.reading_delay_short
+        elif text_length <= 200:
+            delay_range = self.config.reading_delay_medium
+        else:
+            delay_range = self.config.reading_delay_long
+
+        return random.uniform(*delay_range)
+
     async def _simulate_typing(self, entity, text: str) -> None:
         """Simulate typing indicator based on message length."""
-        # Estimate typing time: ~50 chars per second for a fast typist
-        # But we want to seem human, so slower
-        chars_per_second = 20
-        typing_duration = len(text) / chars_per_second
+        # Use natural timing for typing duration if available
+        if self.natural_timing:
+            typing_duration = self.natural_timing.get_typing_duration(len(text))
+        else:
+            # Estimate typing time: ~50 chars per second for a fast typist
+            # But we want to seem human, so slower
+            chars_per_second = 20
+            typing_duration = len(text) / chars_per_second
 
         # Minimum 1 second, maximum 5 seconds
         typing_duration = max(1.0, min(typing_duration, 5.0))

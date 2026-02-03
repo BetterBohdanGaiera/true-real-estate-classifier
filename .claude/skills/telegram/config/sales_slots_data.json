@@ -1,45 +1,45 @@
 {
-  "last_generated": "2026-01-20T15:32:41.333632",
+  "last_generated": "2026-02-03T11:48:56.065286",
   "slots": [
     {
-      "id": "20260120_1500",
-      "date": "2026-01-20",
-      "start_time": "15:00:00",
-      "end_time": "15:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260120_1600",
-      "date": "2026-01-20",
-      "start_time": "16:00:00",
-      "end_time": "16:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260121_1000",
-      "date": "2026-01-21",
+      "id": "20260203_1000",
+      "date": "2026-02-03",
       "start_time": "10:00:00",
       "end_time": "10:30:00",
       "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
+      "is_available": true,
+      "booked_by": null
     },
     {
-      "id": "20260121_1100",
-      "date": "2026-01-21",
+      "id": "20260203_1100",
+      "date": "2026-02-03",
       "start_time": "11:00:00",
       "end_time": "11:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260203_1400",
+      "date": "2026-02-03",
+      "start_time": "14:00:00",
+      "end_time": "14:30:00",
       "salesperson": "Эксперт True Real Estate",
       "is_available": false,
       "booked_by": "mock_prospect_123"
     },
     {
-      "id": "20260121_1600",
-      "date": "2026-01-21",
+      "id": "20260203_1500",
+      "date": "2026-02-03",
+      "start_time": "15:00:00",
+      "end_time": "15:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260203_1600",
+      "date": "2026-02-03",
       "start_time": "16:00:00",
       "end_time": "16:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -47,17 +47,17 @@
       "booked_by": "mock_prospect_123"
     },
     {
-      "id": "20260120_1100",
-      "date": "2026-01-20",
-      "start_time": "11:00:00",
-      "end_time": "11:30:00",
+      "id": "20260203_1700",
+      "date": "2026-02-03",
+      "start_time": "17:00:00",
+      "end_time": "17:30:00",
       "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
+      "is_available": true,
+      "booked_by": null
     },
     {
-      "id": "20260120_1800",
-      "date": "2026-01-20",
+      "id": "20260203_1800",
+      "date": "2026-02-03",
       "start_time": "18:00:00",
       "end_time": "18:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -65,89 +65,17 @@
       "booked_by": "mock_prospect_123"
     },
     {
-      "id": "20260121_1400",
-      "date": "2026-01-21",
-      "start_time": "14:00:00",
-      "end_time": "14:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260121_1800",
-      "date": "2026-01-21",
-      "start_time": "18:00:00",
-      "end_time": "18:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260122_1000",
-      "date": "2026-01-22",
+      "id": "20260204_1000",
+      "date": "2026-02-04",
       "start_time": "10:00:00",
       "end_time": "10:30:00",
       "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260122_1800",
-      "date": "2026-01-22",
-      "start_time": "18:00:00",
-      "end_time": "18:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260120_1000",
-      "date": "2026-01-20",
-      "start_time": "10:00:00",
-      "end_time": "10:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260120_1400",
-      "date": "2026-01-20",
-      "start_time": "14:00:00",
-      "end_time": "14:30:00",
-      "salesperson": "Эксперт True Real Estate",
       "is_available": true,
       "booked_by": null
     },
     {
-      "id": "20260120_1700",
-      "date": "2026-01-20",
-      "start_time": "17:00:00",
-      "end_time": "17:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260121_1500",
-      "date": "2026-01-21",
-      "start_time": "15:00:00",
-      "end_time": "15:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260121_1700",
-      "date": "2026-01-21",
-      "start_time": "17:00:00",
-      "end_time": "17:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260122_1100",
-      "date": "2026-01-22",
+      "id": "20260204_1100",
+      "date": "2026-02-04",
       "start_time": "11:00:00",
       "end_time": "11:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -155,8 +83,8 @@
       "booked_by": null
     },
     {
-      "id": "20260122_1400",
-      "date": "2026-01-22",
+      "id": "20260204_1400",
+      "date": "2026-02-04",
       "start_time": "14:00:00",
       "end_time": "14:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -164,8 +92,8 @@
       "booked_by": null
     },
     {
-      "id": "20260122_1500",
-      "date": "2026-01-22",
+      "id": "20260204_1500",
+      "date": "2026-02-04",
       "start_time": "15:00:00",
       "end_time": "15:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -173,8 +101,8 @@
       "booked_by": null
     },
     {
-      "id": "20260122_1600",
-      "date": "2026-01-22",
+      "id": "20260204_1600",
+      "date": "2026-02-04",
       "start_time": "16:00:00",
       "end_time": "16:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -182,71 +110,17 @@
       "booked_by": null
     },
     {
-      "id": "20260122_1700",
-      "date": "2026-01-22",
+      "id": "20260204_1700",
+      "date": "2026-02-04",
       "start_time": "17:00:00",
       "end_time": "17:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1000",
-      "date": "2026-01-23",
-      "start_time": "10:00:00",
-      "end_time": "10:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1100",
-      "date": "2026-01-23",
-      "start_time": "11:00:00",
-      "end_time": "11:30:00",
       "salesperson": "Эксперт True Real Estate",
       "is_available": false,
       "booked_by": "mock_prospect_123"
     },
     {
-      "id": "20260123_1400",
-      "date": "2026-01-23",
-      "start_time": "14:00:00",
-      "end_time": "14:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1500",
-      "date": "2026-01-23",
-      "start_time": "15:00:00",
-      "end_time": "15:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1600",
-      "date": "2026-01-23",
-      "start_time": "16:00:00",
-      "end_time": "16:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1700",
-      "date": "2026-01-23",
-      "start_time": "17:00:00",
-      "end_time": "17:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
-    },
-    {
-      "id": "20260123_1800",
-      "date": "2026-01-23",
+      "id": "20260204_1800",
+      "date": "2026-02-04",
       "start_time": "18:00:00",
       "end_time": "18:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -254,35 +128,35 @@
       "booked_by": null
     },
     {
-      "id": "20260126_1000",
-      "date": "2026-01-26",
+      "id": "20260205_1000",
+      "date": "2026-02-05",
       "start_time": "10:00:00",
       "end_time": "10:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260126_1100",
-      "date": "2026-01-26",
-      "start_time": "11:00:00",
-      "end_time": "11:30:00",
-      "salesperson": "Эксперт True Real Estate",
-      "is_available": false,
-      "booked_by": "mock_prospect_123"
-    },
-    {
-      "id": "20260126_1400",
-      "date": "2026-01-26",
-      "start_time": "14:00:00",
-      "end_time": "14:30:00",
       "salesperson": "Эксперт True Real Estate",
       "is_available": true,
       "booked_by": null
     },
     {
-      "id": "20260126_1500",
-      "date": "2026-01-26",
+      "id": "20260205_1100",
+      "date": "2026-02-05",
+      "start_time": "11:00:00",
+      "end_time": "11:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260205_1400",
+      "date": "2026-02-05",
+      "start_time": "14:00:00",
+      "end_time": "14:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": false,
+      "booked_by": "mock_prospect_123"
+    },
+    {
+      "id": "20260205_1500",
+      "date": "2026-02-05",
       "start_time": "15:00:00",
       "end_time": "15:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -290,8 +164,8 @@
       "booked_by": null
     },
     {
-      "id": "20260126_1600",
-      "date": "2026-01-26",
+      "id": "20260205_1600",
+      "date": "2026-02-05",
       "start_time": "16:00:00",
       "end_time": "16:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -299,8 +173,8 @@
       "booked_by": "mock_prospect_123"
     },
     {
-      "id": "20260126_1700",
-      "date": "2026-01-26",
+      "id": "20260205_1700",
+      "date": "2026-02-05",
       "start_time": "17:00:00",
       "end_time": "17:30:00",
       "salesperson": "Эксперт True Real Estate",
@@ -308,8 +182,134 @@
       "booked_by": null
     },
     {
-      "id": "20260126_1800",
-      "date": "2026-01-26",
+      "id": "20260205_1800",
+      "date": "2026-02-05",
+      "start_time": "18:00:00",
+      "end_time": "18:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260206_1000",
+      "date": "2026-02-06",
+      "start_time": "10:00:00",
+      "end_time": "10:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": false,
+      "booked_by": "mock_prospect_123"
+    },
+    {
+      "id": "20260206_1100",
+      "date": "2026-02-06",
+      "start_time": "11:00:00",
+      "end_time": "11:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260206_1400",
+      "date": "2026-02-06",
+      "start_time": "14:00:00",
+      "end_time": "14:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260206_1500",
+      "date": "2026-02-06",
+      "start_time": "15:00:00",
+      "end_time": "15:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": false,
+      "booked_by": "mock_prospect_123"
+    },
+    {
+      "id": "20260206_1600",
+      "date": "2026-02-06",
+      "start_time": "16:00:00",
+      "end_time": "16:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260206_1700",
+      "date": "2026-02-06",
+      "start_time": "17:00:00",
+      "end_time": "17:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260206_1800",
+      "date": "2026-02-06",
+      "start_time": "18:00:00",
+      "end_time": "18:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260209_1000",
+      "date": "2026-02-09",
+      "start_time": "10:00:00",
+      "end_time": "10:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": false,
+      "booked_by": "mock_prospect_123"
+    },
+    {
+      "id": "20260209_1100",
+      "date": "2026-02-09",
+      "start_time": "11:00:00",
+      "end_time": "11:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": false,
+      "booked_by": "mock_prospect_123"
+    },
+    {
+      "id": "20260209_1400",
+      "date": "2026-02-09",
+      "start_time": "14:00:00",
+      "end_time": "14:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260209_1500",
+      "date": "2026-02-09",
+      "start_time": "15:00:00",
+      "end_time": "15:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260209_1600",
+      "date": "2026-02-09",
+      "start_time": "16:00:00",
+      "end_time": "16:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260209_1700",
+      "date": "2026-02-09",
+      "start_time": "17:00:00",
+      "end_time": "17:30:00",
+      "salesperson": "Эксперт True Real Estate",
+      "is_available": true,
+      "booked_by": null
+    },
+    {
+      "id": "20260209_1800",
+      "date": "2026-02-09",
       "start_time": "18:00:00",
       "end_time": "18:30:00",
       "salesperson": "Эксперт True Real Estate",

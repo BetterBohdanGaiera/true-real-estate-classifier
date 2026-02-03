@@ -42,6 +42,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -179,7 +180,7 @@ async def run_calendar_test(
             )
             if verbose:
                 console.print(f"[green]Created conflict event: {conflict_event.id}[/green]")
-                console.print(f"  Conflict time: {conflict_time_str}[/green]")
+                console.print(f"  Conflict time: {conflict_time_str}")
 
         # Create a test calendar event (simulating successful scheduling)
         # In a full integration test, the ConversationSimulator would drive this
@@ -233,7 +234,7 @@ async def run_calendar_test(
             console.print(f"Validation passed: {validation.all_passed}")
             if validation.validation_errors:
                 for err in validation.validation_errors:
-                    console.print(f"  [red]Error: {err}[/red]")
+                    console.print(f"  [red]Error: {escape(err)}[/red]")
 
     except Exception as e:
         error_msg = str(e)
@@ -246,7 +247,7 @@ async def run_calendar_test(
         }
         validation = None
         if verbose:
-            console.print(f"[red]Error: {error_msg}[/red]")
+            console.print(f"[red]Error: {escape(error_msg)}[/red]")
 
     duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
@@ -509,7 +510,7 @@ Examples:
         cal_client = CalendarTestClient(account=args.account)
         validator = CalendarValidator()
     except FileNotFoundError as e:
-        console.print(f"[red]Failed to initialize calendar client: {e}[/red]")
+        console.print(f"[red]Failed to initialize calendar client: {escape(str(e))}[/red]")
         console.print(
             "[yellow]Please ensure you have set up Google Calendar authentication.[/yellow]"
         )
@@ -518,14 +519,14 @@ Examples:
         )
         return 1
     except Exception as e:
-        console.print(f"[red]Failed to initialize calendar client: {e}[/red]")
+        console.print(f"[red]Failed to initialize calendar client: {escape(str(e))}[/red]")
         return 1
 
     # Handle --cleanup-only
     if args.cleanup_only:
-        console.print("[yellow]Cleaning up all [TEST] events...[/yellow]")
+        console.print("[yellow]Cleaning up all \\[TEST] events...[/yellow]")
         deleted = cal_client.cleanup_all_test_prefix_events()
-        console.print(f"[green]Deleted {deleted} [TEST] events[/green]")
+        console.print(f"[green]Deleted {deleted} \\[TEST] events[/green]")
         return 0
 
     # Determine scenarios to run
@@ -538,7 +539,7 @@ Examples:
             scenario = get_calendar_scenario_by_name(args.scenario)
             scenarios = [scenario]
         except ValueError as e:
-            console.print(f"[red]{e}[/red]")
+            console.print(f"[red]{escape(str(e))}[/red]")
             console.print("\nAvailable scenarios:")
             for name in get_scenario_names():
                 console.print(f"  - {name}")
@@ -566,9 +567,9 @@ Examples:
 
     # Cleanup if requested
     if args.cleanup:
-        console.print("\n[yellow]Cleaning up [TEST] events...[/yellow]")
+        console.print("\n[yellow]Cleaning up \\[TEST] events...[/yellow]")
         deleted = cal_client.cleanup_all_test_prefix_events()
-        console.print(f"[green]Deleted {deleted} [TEST] events[/green]")
+        console.print(f"[green]Deleted {deleted} \\[TEST] events[/green]")
 
     return 0 if summary.failed == 0 else 1
 

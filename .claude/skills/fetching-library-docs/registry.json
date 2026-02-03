@@ -1,0 +1,842 @@
+{
+  "pydantic": {
+    "name": "Pydantic",
+    "url": "https://docs.pydantic.dev/latest/",
+    "versioned_url": "https://docs.pydantic.dev/{version}/",
+    "aliases": ["pydantic-v2"],
+    "pages": [
+      {"path": "concepts/models/", "title": "Models"},
+      {"path": "concepts/fields/", "title": "Fields"},
+      {"path": "concepts/validators/", "title": "Validators"},
+      {"path": "concepts/types/", "title": "Types"},
+      {"path": "concepts/serialization/", "title": "Serialization"},
+      {"path": "concepts/config/", "title": "Configuration"},
+      {"path": "api/base_model/", "title": "BaseModel API Reference"},
+      {"path": "concepts/json_schema/", "title": "JSON Schema"}
+    ]
+  },
+  "fastapi": {
+    "name": "FastAPI",
+    "url": "https://fastapi.tiangolo.com/",
+    "aliases": ["fast-api"],
+    "pages": [
+      {"path": "tutorial/first-steps/", "title": "First Steps"},
+      {"path": "tutorial/path-params/", "title": "Path Parameters"},
+      {"path": "tutorial/query-params/", "title": "Query Parameters"},
+      {"path": "tutorial/body/", "title": "Request Body"},
+      {"path": "tutorial/dependencies/", "title": "Dependencies"},
+      {"path": "tutorial/security/", "title": "Security"},
+      {"path": "advanced/middleware/", "title": "Middleware"},
+      {"path": "tutorial/handling-errors/", "title": "Handling Errors"}
+    ]
+  },
+  "django": {
+    "name": "Django",
+    "url": "https://docs.djangoproject.com/en/stable/",
+    "versioned_url": "https://docs.djangoproject.com/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "intro/tutorial01/", "title": "Getting Started Tutorial"},
+      {"path": "topics/db/models/", "title": "Models"},
+      {"path": "topics/http/views/", "title": "Views"},
+      {"path": "topics/http/urls/", "title": "URL Dispatcher"},
+      {"path": "topics/forms/", "title": "Forms"},
+      {"path": "topics/auth/", "title": "Authentication"},
+      {"path": "ref/settings/", "title": "Settings Reference"},
+      {"path": "topics/db/queries/", "title": "Making Queries"}
+    ]
+  },
+  "flask": {
+    "name": "Flask",
+    "url": "https://flask.palletsprojects.com/en/stable/",
+    "versioned_url": "https://flask.palletsprojects.com/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "quickstart/", "title": "Quickstart"},
+      {"path": "tutorial/", "title": "Tutorial"},
+      {"path": "patterns/", "title": "Patterns"},
+      {"path": "api/", "title": "API Reference"},
+      {"path": "blueprints/", "title": "Blueprints"}
+    ]
+  },
+  "sqlalchemy": {
+    "name": "SQLAlchemy",
+    "url": "https://docs.sqlalchemy.org/en/20/",
+    "versioned_url": "https://docs.sqlalchemy.org/en/{version}/",
+    "aliases": ["sqla"],
+    "pages": [
+      {"path": "tutorial/index.html", "title": "Unified Tutorial"},
+      {"path": "orm/quickstart.html", "title": "ORM Quickstart"},
+      {"path": "orm/mapping_styles.html", "title": "ORM Mapping Styles"},
+      {"path": "orm/session_basics.html", "title": "Session Basics"},
+      {"path": "orm/queryguide/index.html", "title": "ORM Querying Guide"},
+      {"path": "core/engines.html", "title": "Engine Configuration"}
+    ]
+  },
+  "anthropic": {
+    "name": "Anthropic",
+    "url": "https://docs.anthropic.com/en/docs/",
+    "aliases": ["claude", "claude-api"],
+    "pages": [
+      {"path": "initial-setup", "title": "Initial Setup"},
+      {"path": "build-with-claude/prompt-engineering/overview", "title": "Prompt Engineering"},
+      {"path": "build-with-claude/message-batches", "title": "Message Batches"},
+      {"path": "build-with-claude/tool-use", "title": "Tool Use"},
+      {"path": "build-with-claude/vision", "title": "Vision"},
+      {"path": "build-with-claude/streaming", "title": "Streaming"},
+      {"path": "about-claude/models", "title": "Models"},
+      {"path": "api-reference", "title": "API Reference"}
+    ]
+  },
+  "openai": {
+    "name": "OpenAI",
+    "url": "https://platform.openai.com/docs/",
+    "aliases": ["gpt", "chatgpt-api"],
+    "pages": [
+      {"path": "quickstart", "title": "Quickstart"},
+      {"path": "guides/text-generation", "title": "Text Generation"},
+      {"path": "guides/function-calling", "title": "Function Calling"},
+      {"path": "guides/embeddings", "title": "Embeddings"},
+      {"path": "guides/vision", "title": "Vision"},
+      {"path": "api-reference/chat", "title": "Chat API Reference"}
+    ]
+  },
+  "langchain": {
+    "name": "LangChain",
+    "url": "https://python.langchain.com/docs/",
+    "aliases": ["lang-chain"],
+    "pages": [
+      {"path": "get_started/introduction", "title": "Introduction"},
+      {"path": "modules/model_io/", "title": "Model I/O"},
+      {"path": "modules/chains/", "title": "Chains"},
+      {"path": "modules/agents/", "title": "Agents"},
+      {"path": "modules/memory/", "title": "Memory"},
+      {"path": "modules/retrieval/", "title": "Retrieval"}
+    ]
+  },
+  "pytest": {
+    "name": "pytest",
+    "url": "https://docs.pytest.org/en/stable/",
+    "versioned_url": "https://docs.pytest.org/en/{version}/",
+    "aliases": ["py-test"],
+    "pages": [
+      {"path": "getting-started.html", "title": "Getting Started"},
+      {"path": "how-to/fixtures.html", "title": "Fixtures"},
+      {"path": "how-to/parametrize.html", "title": "Parametrize"},
+      {"path": "how-to/assert.html", "title": "Assertions"},
+      {"path": "how-to/monkeypatch.html", "title": "Monkeypatch"},
+      {"path": "reference/reference.html", "title": "API Reference"}
+    ]
+  },
+  "httpx": {
+    "name": "HTTPX",
+    "url": "https://www.python-httpx.org/",
+    "aliases": [],
+    "pages": [
+      {"path": "quickstart/", "title": "Quickstart"},
+      {"path": "async/", "title": "Async Support"},
+      {"path": "advanced/clients/", "title": "Advanced Clients"},
+      {"path": "api/", "title": "API Reference"}
+    ]
+  },
+  "celery": {
+    "name": "Celery",
+    "url": "https://docs.celeryq.dev/en/stable/",
+    "versioned_url": "https://docs.celeryq.dev/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "getting-started/first-steps-with-celery.html", "title": "First Steps"},
+      {"path": "userguide/tasks.html", "title": "Tasks"},
+      {"path": "userguide/calling.html", "title": "Calling Tasks"},
+      {"path": "userguide/canvas.html", "title": "Canvas (Workflows)"},
+      {"path": "userguide/configuration.html", "title": "Configuration"}
+    ]
+  },
+  "pandas": {
+    "name": "pandas",
+    "url": "https://pandas.pydata.org/docs/",
+    "versioned_url": "https://pandas.pydata.org/docs/version/{version}/",
+    "aliases": ["pd"],
+    "pages": [
+      {"path": "getting_started/intro_tutorials/index.html", "title": "Getting Started Tutorials"},
+      {"path": "user_guide/indexing.html", "title": "Indexing and Selecting Data"},
+      {"path": "user_guide/groupby.html", "title": "Group By"},
+      {"path": "user_guide/merging.html", "title": "Merge, Join, Concatenate"},
+      {"path": "reference/api/pandas.DataFrame.html", "title": "DataFrame API Reference"}
+    ]
+  },
+  "numpy": {
+    "name": "NumPy",
+    "url": "https://numpy.org/doc/stable/",
+    "versioned_url": "https://numpy.org/doc/{version}/",
+    "aliases": ["np"],
+    "pages": [
+      {"path": "user/quickstart.html", "title": "Quickstart"},
+      {"path": "user/basics.indexing.html", "title": "Indexing"},
+      {"path": "user/basics.broadcasting.html", "title": "Broadcasting"},
+      {"path": "reference/routines.html", "title": "Routines Reference"},
+      {"path": "reference/arrays.html", "title": "Array Objects Reference"}
+    ]
+  },
+  "polars": {
+    "name": "Polars",
+    "url": "https://docs.pola.rs/",
+    "aliases": ["pl"],
+    "pages": [
+      {"path": "user-guide/getting-started/", "title": "Getting Started"},
+      {"path": "user-guide/concepts/data-types/", "title": "Data Types"},
+      {"path": "user-guide/expressions/", "title": "Expressions"},
+      {"path": "user-guide/lazy/", "title": "Lazy API"},
+      {"path": "api/python/", "title": "Python API Reference"}
+    ]
+  },
+  "requests": {
+    "name": "Requests",
+    "url": "https://docs.python-requests.org/en/latest/",
+    "aliases": [],
+    "pages": [
+      {"path": "user/quickstart/", "title": "Quickstart"},
+      {"path": "user/advanced/", "title": "Advanced Usage"},
+      {"path": "api/", "title": "API Reference"}
+    ]
+  },
+  "beautifulsoup": {
+    "name": "Beautiful Soup",
+    "url": "https://www.crummy.com/software/BeautifulSoup/bs4/doc/",
+    "aliases": ["bs4", "beautiful-soup", "beautifulsoup4"],
+    "pages": [
+      {"path": "", "title": "Full Documentation (Single Page)"}
+    ]
+  },
+  "scrapy": {
+    "name": "Scrapy",
+    "url": "https://docs.scrapy.org/en/latest/",
+    "versioned_url": "https://docs.scrapy.org/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "intro/tutorial.html", "title": "Tutorial"},
+      {"path": "topics/spiders.html", "title": "Spiders"},
+      {"path": "topics/selectors.html", "title": "Selectors"},
+      {"path": "topics/items.html", "title": "Items"},
+      {"path": "topics/item-pipeline.html", "title": "Item Pipeline"}
+    ]
+  },
+  "click": {
+    "name": "Click",
+    "url": "https://click.palletsprojects.com/en/stable/",
+    "versioned_url": "https://click.palletsprojects.com/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "quickstart/", "title": "Quickstart"},
+      {"path": "parameters/", "title": "Parameters"},
+      {"path": "options/", "title": "Options"},
+      {"path": "commands/", "title": "Commands and Groups"},
+      {"path": "api/", "title": "API Reference"}
+    ]
+  },
+  "typer": {
+    "name": "Typer",
+    "url": "https://typer.tiangolo.com/",
+    "aliases": [],
+    "pages": [
+      {"path": "tutorial/first-steps/", "title": "First Steps"},
+      {"path": "tutorial/commands/", "title": "Commands"},
+      {"path": "tutorial/options/", "title": "CLI Options"},
+      {"path": "tutorial/arguments/", "title": "CLI Arguments"},
+      {"path": "tutorial/subcommands/", "title": "Subcommands"}
+    ]
+  },
+  "rich": {
+    "name": "Rich",
+    "url": "https://rich.readthedocs.io/en/stable/",
+    "versioned_url": "https://rich.readthedocs.io/en/{version}/",
+    "aliases": [],
+    "pages": [
+      {"path": "introduction.html", "title": "Introduction"},
+      {"path": "console.html", "title": "Console API"},
+      {"path": "tables.html", "title": "Tables"},
+      {"path": "panel.html", "title": "Panels"},
+      {"path": "progress.html", "title": "Progress Bars"},
+      {"path": "reference.html", "title": "API Reference"}
+    ]
+  },
+  "textual": {
+    "name": "Textual",
+    "url": "https://textual.textualize.io/",
+    "aliases": [],
+    "pages": [
+      {"path": "getting_started/", "title": "Getting Started"},
+      {"path": "guide/app/", "title": "App Guide"},
+      {"path": "guide/widgets/", "title": "Widgets"},
+      {"path": "guide/CSS/", "title": "CSS Guide"},
+      {"path": "guide/events/", "title": "Events"}
+    ]
+  },
+  "pillow": {
+    "name": "Pillow",
+    "url": "https://pillow.readthedocs.io/en/stable/",
+    "versioned_url": "https://pillow.readthedocs.io/en/{version}/",
+    "aliases": ["pil"],
+    "pages": [
+      {"path": "handbook/tutorial.html", "title": "Tutorial"},
+      {"path": "handbook/concepts.html", "title": "Concepts"},
+      {"path": "reference/Image.html", "title": "Image Module"},
+      {"path": "reference/ImageDraw.html", "title": "ImageDraw Module"},
+      {"path": "reference/ImageFilter.html", "title": "ImageFilter Module"}
+    ]
+  },
+  "pytorch": {
+    "name": "PyTorch",
+    "url": "https://pytorch.org/docs/stable/",
+    "versioned_url": "https://pytorch.org/docs/{version}/",
+    "aliases": ["torch"],
+    "pages": [
+      {"path": "torch.html", "title": "torch Package"},
+      {"path": "nn.html", "title": "torch.nn"},
+      {"path": "optim.html", "title": "torch.optim"},
+      {"path": "tensors.html", "title": "Tensors"},
+      {"path": "autograd.html", "title": "Autograd"},
+      {"path": "data.html", "title": "Data Loading"}
+    ]
+  },
+  "tensorflow": {
+    "name": "TensorFlow",
+    "url": "https://www.tensorflow.org/api_docs/python/",
+    "versioned_url": "https://www.tensorflow.org/versions/r{version}/api_docs/python/",
+    "aliases": ["tf"],
+    "pages": [
+      {"path": "tf", "title": "tf Module"},
+      {"path": "tf/keras", "title": "Keras API"},
+      {"path": "tf/data/Dataset", "title": "Dataset API"},
+      {"path": "tf/nn", "title": "Neural Network Ops"}
+    ]
+  },
+  "scikit-learn": {
+    "name": "scikit-learn",
+    "url": "https://scikit-learn.org/stable/",
+    "versioned_url": "https://scikit-learn.org/{version}/",
+    "aliases": ["sklearn"],
+    "pages": [
+      {"path": "getting_started.html", "title": "Getting Started"},
+      {"path": "user_guide.html", "title": "User Guide"},
+      {"path": "modules/classes.html", "title": "API Reference"},
+      {"path": "tutorial/basic/tutorial.html", "title": "Basic Tutorial"},
+      {"path": "modules/model_evaluation.html", "title": "Model Evaluation"}
+    ]
+  },
+  "streamlit": {
+    "name": "Streamlit",
+    "url": "https://docs.streamlit.io/",
+    "aliases": ["st"],
+    "pages": [
+      {"path": "get-started", "title": "Get Started"},
+      {"path": "develop/api-reference", "title": "API Reference"},
+      {"path": "develop/concepts/app-model", "title": "App Model"},
+      {"path": "develop/concepts/architecture", "title": "Architecture"},
+      {"path": "develop/api-reference/widgets", "title": "Widgets"}
+    ]
+  },
+  "gradio": {
+    "name": "Gradio",
+    "url": "https://www.gradio.app/docs/",
+    "aliases": ["gr"],
+    "pages": [
+      {"path": "gradio/interface", "title": "Interface"},
+      {"path": "gradio/blocks", "title": "Blocks"},
+      {"path": "gradio/chatinterface", "title": "ChatInterface"},
+      {"path": "gradio/components", "title": "Components"}
+    ]
+  },
+  "dspy": {
+    "name": "DSPy",
+    "url": "https://dspy-docs.vercel.app/docs/",
+    "aliases": ["dspy-ai"],
+    "pages": [
+      {"path": "intro", "title": "Introduction"},
+      {"path": "building-blocks/signatures", "title": "Signatures"},
+      {"path": "building-blocks/modules", "title": "Modules"},
+      {"path": "building-blocks/optimizers", "title": "Optimizers"},
+      {"path": "building-blocks/data", "title": "Data"}
+    ]
+  },
+  "react": {
+    "name": "React",
+    "url": "https://react.dev/",
+    "aliases": ["reactjs", "react.js"],
+    "pages": [
+      {"path": "learn", "title": "Quick Start"},
+      {"path": "learn/thinking-in-react", "title": "Thinking in React"},
+      {"path": "reference/react/useState", "title": "useState Hook"},
+      {"path": "reference/react/useEffect", "title": "useEffect Hook"},
+      {"path": "reference/react/useContext", "title": "useContext Hook"},
+      {"path": "learn/managing-state", "title": "Managing State"},
+      {"path": "reference/react/hooks", "title": "Hooks API Reference"},
+      {"path": "learn/escape-hatches", "title": "Escape Hatches"}
+    ]
+  },
+  "nextjs": {
+    "name": "Next.js",
+    "url": "https://nextjs.org/docs/",
+    "aliases": ["next", "next.js"],
+    "pages": [
+      {"path": "getting-started", "title": "Getting Started"},
+      {"path": "app/building-your-application/routing", "title": "Routing"},
+      {"path": "app/building-your-application/data-fetching", "title": "Data Fetching"},
+      {"path": "app/building-your-application/rendering", "title": "Rendering"},
+      {"path": "app/api-reference/functions/server-actions", "title": "Server Actions"},
+      {"path": "app/building-your-application/styling", "title": "Styling"},
+      {"path": "app/api-reference/next-config-js", "title": "next.config.js"},
+      {"path": "app/building-your-application/deploying", "title": "Deploying"}
+    ]
+  },
+  "vue": {
+    "name": "Vue.js",
+    "url": "https://vuejs.org/",
+    "aliases": ["vue.js", "vuejs"],
+    "pages": [
+      {"path": "guide/introduction.html", "title": "Introduction"},
+      {"path": "guide/essentials/reactivity-fundamentals.html", "title": "Reactivity Fundamentals"},
+      {"path": "guide/essentials/computed.html", "title": "Computed Properties"},
+      {"path": "guide/components/registration.html", "title": "Components"},
+      {"path": "guide/reusability/composables.html", "title": "Composables"},
+      {"path": "api/", "title": "API Reference"}
+    ]
+  },
+  "svelte": {
+    "name": "Svelte",
+    "url": "https://svelte.dev/docs/",
+    "aliases": ["sveltekit"],
+    "pages": [
+      {"path": "svelte/overview", "title": "Overview"},
+      {"path": "svelte/basic-markup", "title": "Basic Markup"},
+      {"path": "svelte/runes", "title": "Runes"},
+      {"path": "svelte/lifecycle-hooks", "title": "Lifecycle Hooks"},
+      {"path": "kit/introduction", "title": "SvelteKit Introduction"}
+    ]
+  },
+  "angular": {
+    "name": "Angular",
+    "url": "https://angular.dev/",
+    "aliases": ["ng"],
+    "pages": [
+      {"path": "overview", "title": "Overview"},
+      {"path": "guide/components", "title": "Components"},
+      {"path": "guide/templates", "title": "Templates"},
+      {"path": "guide/di", "title": "Dependency Injection"},
+      {"path": "guide/signals", "title": "Signals"},
+      {"path": "guide/routing", "title": "Routing"}
+    ]
+  },
+  "express": {
+    "name": "Express",
+    "url": "https://expressjs.com/",
+    "aliases": ["express.js", "expressjs"],
+    "pages": [
+      {"path": "en/starter/installing.html", "title": "Installing"},
+      {"path": "en/guide/routing.html", "title": "Routing"},
+      {"path": "en/guide/using-middleware.html", "title": "Middleware"},
+      {"path": "en/guide/error-handling.html", "title": "Error Handling"},
+      {"path": "en/4x/api.html", "title": "API Reference"}
+    ]
+  },
+  "nestjs": {
+    "name": "NestJS",
+    "url": "https://docs.nestjs.com/",
+    "aliases": ["nest", "nest.js"],
+    "pages": [
+      {"path": "first-steps", "title": "First Steps"},
+      {"path": "controllers", "title": "Controllers"},
+      {"path": "providers", "title": "Providers"},
+      {"path": "modules", "title": "Modules"},
+      {"path": "middleware", "title": "Middleware"},
+      {"path": "guards", "title": "Guards"}
+    ]
+  },
+  "tailwindcss": {
+    "name": "Tailwind CSS",
+    "url": "https://tailwindcss.com/docs/",
+    "aliases": ["tailwind"],
+    "pages": [
+      {"path": "installation", "title": "Installation"},
+      {"path": "utility-first", "title": "Utility-First Fundamentals"},
+      {"path": "responsive-design", "title": "Responsive Design"},
+      {"path": "dark-mode", "title": "Dark Mode"},
+      {"path": "reusing-styles", "title": "Reusing Styles"},
+      {"path": "customizing-colors", "title": "Customizing Colors"},
+      {"path": "flex", "title": "Flexbox"},
+      {"path": "grid-template-columns", "title": "Grid"}
+    ]
+  },
+  "typescript": {
+    "name": "TypeScript",
+    "url": "https://www.typescriptlang.org/docs/",
+    "aliases": ["ts"],
+    "pages": [
+      {"path": "handbook/2/basic-types.html", "title": "Basic Types"},
+      {"path": "handbook/2/everyday-types.html", "title": "Everyday Types"},
+      {"path": "handbook/2/narrowing.html", "title": "Narrowing"},
+      {"path": "handbook/2/functions.html", "title": "Functions"},
+      {"path": "handbook/2/objects.html", "title": "Object Types"},
+      {"path": "handbook/2/generics.html", "title": "Generics"},
+      {"path": "handbook/2/types-from-types.html", "title": "Types from Types"},
+      {"path": "handbook/utility-types.html", "title": "Utility Types"}
+    ]
+  },
+  "zod": {
+    "name": "Zod",
+    "url": "https://zod.dev/",
+    "aliases": [],
+    "pages": [
+      {"path": "?id=introduction", "title": "Introduction"},
+      {"path": "?id=primitives", "title": "Primitives"},
+      {"path": "?id=objects", "title": "Objects"},
+      {"path": "?id=arrays", "title": "Arrays"},
+      {"path": "?id=unions", "title": "Unions"}
+    ]
+  },
+  "prisma": {
+    "name": "Prisma",
+    "url": "https://www.prisma.io/docs/",
+    "aliases": ["prisma-orm"],
+    "pages": [
+      {"path": "getting-started", "title": "Getting Started"},
+      {"path": "concepts/components/prisma-schema", "title": "Prisma Schema"},
+      {"path": "concepts/components/prisma-client", "title": "Prisma Client"},
+      {"path": "concepts/components/prisma-migrate", "title": "Prisma Migrate"},
+      {"path": "concepts/components/prisma-client/crud", "title": "CRUD Operations"},
+      {"path": "concepts/components/prisma-client/relation-queries", "title": "Relation Queries"},
+      {"path": "concepts/components/prisma-client/filtering-and-sorting", "title": "Filtering and Sorting"},
+      {"path": "reference/api-reference/prisma-client-reference", "title": "Client API Reference"}
+    ]
+  },
+  "drizzle": {
+    "name": "Drizzle ORM",
+    "url": "https://orm.drizzle.team/docs/",
+    "aliases": ["drizzle-orm"],
+    "pages": [
+      {"path": "overview", "title": "Overview"},
+      {"path": "sql-schema-declaration", "title": "Schema Declaration"},
+      {"path": "crud", "title": "CRUD"},
+      {"path": "joins", "title": "Joins"},
+      {"path": "migrations", "title": "Migrations"}
+    ]
+  },
+  "trpc": {
+    "name": "tRPC",
+    "url": "https://trpc.io/docs/",
+    "aliases": ["t3-stack"],
+    "pages": [
+      {"path": "quickstart", "title": "Quickstart"},
+      {"path": "server/routers", "title": "Routers"},
+      {"path": "server/procedures", "title": "Procedures"},
+      {"path": "client/react", "title": "React Client"},
+      {"path": "server/middlewares", "title": "Middlewares"}
+    ]
+  },
+  "astro": {
+    "name": "Astro",
+    "url": "https://docs.astro.build/en/",
+    "aliases": ["astro-js"],
+    "pages": [
+      {"path": "getting-started/", "title": "Getting Started"},
+      {"path": "basics/project-structure/", "title": "Project Structure"},
+      {"path": "basics/astro-components/", "title": "Astro Components"},
+      {"path": "guides/content-collections/", "title": "Content Collections"},
+      {"path": "guides/routing/", "title": "Routing"}
+    ]
+  },
+  "hono": {
+    "name": "Hono",
+    "url": "https://hono.dev/",
+    "aliases": ["hono-js"],
+    "pages": [
+      {"path": "docs/", "title": "Documentation"},
+      {"path": "docs/getting-started/basic", "title": "Getting Started"},
+      {"path": "docs/api/routing", "title": "Routing"},
+      {"path": "docs/api/middleware", "title": "Middleware"},
+      {"path": "docs/guides/validation", "title": "Validation"}
+    ]
+  },
+  "bun": {
+    "name": "Bun",
+    "url": "https://bun.sh/docs/",
+    "aliases": ["bunjs"],
+    "pages": [
+      {"path": "installation", "title": "Installation"},
+      {"path": "runtime/index", "title": "Runtime"},
+      {"path": "bundler/index", "title": "Bundler"},
+      {"path": "test/writing", "title": "Testing"},
+      {"path": "api/http", "title": "HTTP API"}
+    ]
+  },
+  "deno": {
+    "name": "Deno",
+    "url": "https://docs.deno.com/",
+    "aliases": ["denojs"],
+    "pages": [
+      {"path": "runtime/", "title": "Runtime"},
+      {"path": "runtime/fundamentals/", "title": "Fundamentals"},
+      {"path": "runtime/fundamentals/typescript/", "title": "TypeScript Support"},
+      {"path": "deploy/", "title": "Deno Deploy"},
+      {"path": "runtime/reference/web_platform_apis/", "title": "Web Platform APIs"}
+    ]
+  },
+  "vite": {
+    "name": "Vite",
+    "url": "https://vitejs.dev/guide/",
+    "aliases": ["vitejs"],
+    "pages": [
+      {"path": "", "title": "Getting Started"},
+      {"path": "features", "title": "Features"},
+      {"path": "cli", "title": "CLI"},
+      {"path": "using-plugins", "title": "Using Plugins"},
+      {"path": "build", "title": "Building for Production"}
+    ]
+  },
+  "vitest": {
+    "name": "Vitest",
+    "url": "https://vitest.dev/guide/",
+    "aliases": [],
+    "pages": [
+      {"path": "", "title": "Getting Started"},
+      {"path": "features", "title": "Features"},
+      {"path": "mocking", "title": "Mocking"},
+      {"path": "cli", "title": "CLI"},
+      {"path": "../api/", "title": "API Reference"}
+    ]
+  },
+  "playwright": {
+    "name": "Playwright",
+    "url": "https://playwright.dev/docs/",
+    "aliases": [],
+    "pages": [
+      {"path": "intro", "title": "Getting Started"},
+      {"path": "writing-tests", "title": "Writing Tests"},
+      {"path": "locators", "title": "Locators"},
+      {"path": "actions", "title": "Actions"},
+      {"path": "assertions", "title": "Assertions"},
+      {"path": "api/class-page", "title": "Page API"}
+    ]
+  },
+  "tanstack-query": {
+    "name": "TanStack Query",
+    "url": "https://tanstack.com/query/latest/docs/",
+    "aliases": ["react-query", "tanstack"],
+    "pages": [
+      {"path": "framework/react/overview", "title": "React Overview"},
+      {"path": "framework/react/guides/queries", "title": "Queries"},
+      {"path": "framework/react/guides/mutations", "title": "Mutations"},
+      {"path": "framework/react/guides/query-invalidation", "title": "Query Invalidation"},
+      {"path": "framework/react/guides/caching", "title": "Caching"},
+      {"path": "framework/react/reference/useQuery", "title": "useQuery Reference"}
+    ]
+  },
+  "shadcn-ui": {
+    "name": "shadcn/ui",
+    "url": "https://ui.shadcn.com/docs/",
+    "aliases": ["shadcn"],
+    "pages": [
+      {"path": "installation", "title": "Installation"},
+      {"path": "installation/next", "title": "Next.js Setup"},
+      {"path": "components/button", "title": "Button"},
+      {"path": "components/dialog", "title": "Dialog"},
+      {"path": "components/form", "title": "Form"},
+      {"path": "components/data-table", "title": "Data Table"},
+      {"path": "dark-mode", "title": "Dark Mode"},
+      {"path": "theming", "title": "Theming"}
+    ]
+  },
+  "tokio": {
+    "name": "Tokio",
+    "url": "https://tokio.rs/",
+    "aliases": [],
+    "pages": [
+      {"path": "tokio/tutorial", "title": "Tutorial"},
+      {"path": "tokio/tutorial/spawning", "title": "Spawning"},
+      {"path": "tokio/tutorial/shared-state", "title": "Shared State"},
+      {"path": "tokio/tutorial/channels", "title": "Channels"}
+    ]
+  },
+  "axum": {
+    "name": "Axum",
+    "url": "https://docs.rs/axum/latest/axum/",
+    "versioned_url": "https://docs.rs/axum/{version}/axum/",
+    "aliases": [],
+    "pages": [
+      {"path": "", "title": "Crate Documentation"},
+      {"path": "struct.Router.html", "title": "Router"},
+      {"path": "extract/index.html", "title": "Extractors"},
+      {"path": "response/index.html", "title": "Responses"}
+    ]
+  },
+  "serde": {
+    "name": "Serde",
+    "url": "https://serde.rs/",
+    "aliases": [],
+    "pages": [
+      {"path": "derive.html", "title": "Derive"},
+      {"path": "attr-rename.html", "title": "Attributes"},
+      {"path": "custom-serialization.html", "title": "Custom Serialization"},
+      {"path": "enum-representations.html", "title": "Enum Representations"}
+    ]
+  },
+  "actix-web": {
+    "name": "Actix Web",
+    "url": "https://actix.rs/docs/",
+    "aliases": ["actix"],
+    "pages": [
+      {"path": "getting-started", "title": "Getting Started"},
+      {"path": "application", "title": "Application"},
+      {"path": "extractors", "title": "Extractors"},
+      {"path": "handlers", "title": "Handlers"}
+    ]
+  },
+  "gin": {
+    "name": "Gin",
+    "url": "https://gin-gonic.com/docs/",
+    "aliases": ["gin-gonic"],
+    "pages": [
+      {"path": "quickstart/", "title": "Quickstart"},
+      {"path": "examples/", "title": "Examples"},
+      {"path": "benchmarks/", "title": "Benchmarks"}
+    ]
+  },
+  "echo": {
+    "name": "Echo",
+    "url": "https://echo.labstack.com/docs/",
+    "aliases": ["labstack-echo"],
+    "pages": [
+      {"path": "quick-start", "title": "Quick Start"},
+      {"path": "routing", "title": "Routing"},
+      {"path": "middleware", "title": "Middleware"},
+      {"path": "context", "title": "Context"}
+    ]
+  },
+  "docker": {
+    "name": "Docker",
+    "url": "https://docs.docker.com/",
+    "aliases": [],
+    "pages": [
+      {"path": "get-started/", "title": "Getting Started"},
+      {"path": "compose/", "title": "Docker Compose"},
+      {"path": "engine/reference/builder/", "title": "Dockerfile Reference"},
+      {"path": "engine/reference/commandline/docker/", "title": "CLI Reference"},
+      {"path": "network/", "title": "Networking"},
+      {"path": "storage/", "title": "Storage"}
+    ]
+  },
+  "kubernetes": {
+    "name": "Kubernetes",
+    "url": "https://kubernetes.io/docs/",
+    "aliases": ["k8s"],
+    "pages": [
+      {"path": "tutorials/kubernetes-basics/", "title": "Kubernetes Basics"},
+      {"path": "concepts/workloads/pods/", "title": "Pods"},
+      {"path": "concepts/services-networking/service/", "title": "Services"},
+      {"path": "concepts/workloads/controllers/deployment/", "title": "Deployments"},
+      {"path": "concepts/configuration/configmap/", "title": "ConfigMaps"},
+      {"path": "reference/kubectl/", "title": "kubectl Reference"}
+    ]
+  },
+  "terraform": {
+    "name": "Terraform",
+    "url": "https://developer.hashicorp.com/terraform/docs/",
+    "aliases": ["tf-infra", "hcl"],
+    "pages": [
+      {"path": "intro", "title": "Introduction"},
+      {"path": "language", "title": "Configuration Language"},
+      {"path": "language/resources", "title": "Resources"},
+      {"path": "language/providers", "title": "Providers"},
+      {"path": "language/modules", "title": "Modules"},
+      {"path": "cli", "title": "CLI Reference"}
+    ]
+  },
+  "cloudflare-workers": {
+    "name": "Cloudflare Workers",
+    "url": "https://developers.cloudflare.com/workers/",
+    "aliases": ["cf-workers", "workers"],
+    "pages": [
+      {"path": "get-started/guide/", "title": "Getting Started"},
+      {"path": "runtime-apis/", "title": "Runtime APIs"},
+      {"path": "configuration/routing/", "title": "Routing"},
+      {"path": "platform/storage-options/", "title": "Storage Options"},
+      {"path": "wrangler/", "title": "Wrangler CLI"}
+    ]
+  },
+  "vercel": {
+    "name": "Vercel",
+    "url": "https://vercel.com/docs/",
+    "aliases": [],
+    "pages": [
+      {"path": "getting-started-with-vercel", "title": "Getting Started"},
+      {"path": "frameworks", "title": "Frameworks"},
+      {"path": "functions", "title": "Serverless Functions"},
+      {"path": "edge-network/overview", "title": "Edge Network"},
+      {"path": "projects/environment-variables", "title": "Environment Variables"}
+    ]
+  },
+  "supabase": {
+    "name": "Supabase",
+    "url": "https://supabase.com/docs/",
+    "aliases": ["supa"],
+    "pages": [
+      {"path": "guides/getting-started", "title": "Getting Started"},
+      {"path": "guides/database/overview", "title": "Database Overview"},
+      {"path": "guides/auth", "title": "Authentication"},
+      {"path": "guides/storage", "title": "Storage"},
+      {"path": "guides/realtime", "title": "Realtime"},
+      {"path": "guides/functions", "title": "Edge Functions"},
+      {"path": "reference/javascript/introduction", "title": "JavaScript Client Reference"},
+      {"path": "guides/api", "title": "APIs"}
+    ]
+  },
+  "firebase": {
+    "name": "Firebase",
+    "url": "https://firebase.google.com/docs/",
+    "aliases": [],
+    "pages": [
+      {"path": "firestore", "title": "Cloud Firestore"},
+      {"path": "auth", "title": "Authentication"},
+      {"path": "functions", "title": "Cloud Functions"},
+      {"path": "storage", "title": "Cloud Storage"},
+      {"path": "hosting", "title": "Hosting"}
+    ]
+  },
+  "huggingface-transformers": {
+    "name": "Hugging Face Transformers",
+    "url": "https://huggingface.co/docs/transformers/",
+    "aliases": ["transformers", "hf"],
+    "pages": [
+      {"path": "quicktour", "title": "Quick Tour"},
+      {"path": "pipeline_tutorial", "title": "Pipelines"},
+      {"path": "training", "title": "Training"},
+      {"path": "main_classes/model", "title": "Models"},
+      {"path": "main_classes/tokenizer", "title": "Tokenizers"},
+      {"path": "tasks/sequence_classification", "title": "Text Classification"}
+    ]
+  },
+  "llama-index": {
+    "name": "LlamaIndex",
+    "url": "https://docs.llamaindex.ai/en/stable/",
+    "aliases": ["llamaindex"],
+    "pages": [
+      {"path": "getting_started/concepts.html", "title": "Core Concepts"},
+      {"path": "understanding/indexing/indexing.html", "title": "Indexing"},
+      {"path": "understanding/querying/querying.html", "title": "Querying"},
+      {"path": "module_guides/loading/loading.html", "title": "Data Loading"},
+      {"path": "module_guides/deploying/agents/", "title": "Agents"}
+    ]
+  },
+  "crew-ai": {
+    "name": "CrewAI",
+    "url": "https://docs.crewai.com/",
+    "aliases": ["crewai"],
+    "pages": [
+      {"path": "quickstart", "title": "Quickstart"},
+      {"path": "concepts/agents", "title": "Agents"},
+      {"path": "concepts/tasks", "title": "Tasks"},
+      {"path": "concepts/crews", "title": "Crews"},
+      {"path": "concepts/tools", "title": "Tools"}
+    ]
+  }
+}
