@@ -52,32 +52,45 @@ from rich.console import Console
 SCRIPTS_DIR = Path(__file__).parent
 SKILLS_BASE = SCRIPTS_DIR.parent.parent
 PROJECT_ROOT = SKILLS_BASE.parent.parent
-_SRC_DIR = PROJECT_ROOT / "src"
-if str(_SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(_SRC_DIR))
+TELEGRAM_SCRIPTS = SKILLS_BASE / "telegram/scripts"
+SCHEDULING_SCRIPTS = SKILLS_BASE / "scheduling/scripts"
+DATABASE_SCRIPTS = SKILLS_BASE / "database/scripts"
+ADW_MODULES = PROJECT_ROOT / "adws"
+
+# Add paths for module imports
+for path in [TELEGRAM_SCRIPTS, SCHEDULING_SCRIPTS, DATABASE_SCRIPTS, ADW_MODULES]:
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
 from dotenv import load_dotenv
 
 load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv()
 
-from sales_agent.agent import TelegramAgent, KnowledgeLoader
-from sales_agent.crm import ProspectManager, AgentConfig, ProspectStatus, ScheduledActionType
-from sales_agent.crm.models import Prospect
-from sales_agent.messaging import MessageBuffer, BufferedMessage
-from sales_agent.database import init_database
-from sales_agent.scheduling import SalesCalendar, SchedulingTool, SchedulerService
-from sales_agent.scheduling.scheduled_action_manager import (
+# Import from telegram skill scripts (actual module location)
+from telegram_agent import TelegramAgent
+from knowledge_loader import KnowledgeLoader
+from prospect_manager import ProspectManager
+from models import AgentConfig, ProspectStatus, ScheduledActionType, Prospect
+from message_buffer import MessageBuffer, BufferedMessage
+from sales_calendar import SalesCalendar
+from scheduling_tool import SchedulingTool
+from scheduler_service import SchedulerService
+from scheduled_action_manager import (
     create_scheduled_action,
     cancel_pending_for_prospect,
     get_pending_actions,
     close_pool,
 )
 
+# Import from database skill
+from init import init_database
+
 console = Console()
 
-# Configuration paths
-CONFIG_DIR = PROJECT_ROOT / "src" / "sales_agent" / "config"
+# Configuration paths - in telegram skill config directory
+CONFIG_DIR = SKILLS_BASE / "telegram" / "config"
 PROSPECTS_FILE = CONFIG_DIR / "prospects.json"
 AGENT_CONFIG_FILE = CONFIG_DIR / "agent_config.json"
 TONE_OF_VOICE_DIR = SKILLS_BASE / "tone-of-voice"
@@ -670,10 +683,8 @@ class MockTelegramDaemon:
         if self.prospect:
             self.prospect.status = ProspectStatus.NEW
             self.prospect.message_count = 0
-
-        # Clear history
-        if self.prospect_manager:
-            self.prospect_manager._history[self._mock_prospect_id] = []
+            # Clear conversation history
+            self.prospect.conversation_history = []
 
         # Cancel pending actions
         try:
