@@ -98,6 +98,7 @@ class ConversationMessage(BaseModel):
 class Prospect(BaseModel):
     """A prospect to reach out to."""
     telegram_id: int | str  # @username or numeric ID
+    username: Optional[str] = None  # @username (without @), for lookup by username
     name: str
     context: str  # Why we're contacting them (e.g., "Interested in villa in Canggu")
     status: ProspectStatus = ProspectStatus.NEW
@@ -174,6 +175,97 @@ class SalesSlot(BaseModel):
         }
 
 
+class TimeRange(BaseModel):
+    """
+    A contiguous time range with optional gaps.
+
+    Represents merged availability slots for natural display.
+    Example: "с 10:00 до 16:00 (кроме 13:00-14:00)" means available 10-13 and 14-16.
+
+    Attributes:
+        date: The date of the time range
+        start_time: Start of the availability window
+        end_time: End of the availability window
+        gaps: List of (start, end) tuples representing booked/unavailable slots within the range
+    """
+    date: date
+    start_time: time
+    end_time: time
+    gaps: list[tuple[time, time]] = Field(default_factory=list)
+
+    @field_validator('end_time')
+    @classmethod
+    def validate_end_after_start(cls, v: time, info) -> time:
+        """Ensure end_time is after start_time."""
+        start = info.data.get('start_time')
+        if start is not None and v <= start:
+            raise ValueError(f"end_time ({v}) must be after start_time ({start})")
+        return v
+
+    @field_validator('gaps')
+    @classmethod
+    def validate_gaps_within_range(cls, v: list[tuple[time, time]], info) -> list[tuple[time, time]]:
+        """Ensure all gaps are within the time range and properly ordered."""
+        start = info.data.get('start_time')
+        end = info.data.get('end_time')
+        if start is None or end is None:
+            return v
+
+        for gap_start, gap_end in v:
+            if gap_start >= gap_end:
+                raise ValueError(f"Gap start ({gap_start}) must be before gap end ({gap_end})")
+            if gap_start < start or gap_end > end:
+                raise ValueError(
+                    f"Gap ({gap_start}-{gap_end}) must be within range ({start}-{end})"
+                )
+        return v
+
+    def format_russian(self, include_gaps: bool = True) -> str:
+        """
+        Format as natural Russian time range.
+
+        Args:
+            include_gaps: Whether to include gap exceptions in output
+
+        Returns:
+            Formatted string like "с 10:00 до 16:00" or "с 10:00 до 16:00 (кроме 13:00-14:00)"
+
+        Examples:
+            >>> from datetime import date, time
+            >>> tr = TimeRange(date=date(2026, 2, 5), start_time=time(10, 0), end_time=time(16, 0))
+            >>> tr.format_russian()
+            'с 10:00 до 16:00'
+
+            >>> tr_with_gap = TimeRange(
+            ...     date=date(2026, 2, 5),
+            ...     start_time=time(10, 0),
+            ...     end_time=time(16, 0),
+            ...     gaps=[(time(13, 0), time(14, 0))]
+            ... )
+            >>> tr_with_gap.format_russian()
+            'с 10:00 до 16:00 (кроме 13:00-14:00)'
+        """
+        start_str = self.start_time.strftime("%H:%M")
+        end_str = self.end_time.strftime("%H:%M")
+        result = f"с {start_str} до {end_str}"
+
+        if include_gaps and self.gaps:
+            gap_strs = [
+                f"{gap_start.strftime('%H:%M')}-{gap_end.strftime('%H:%M')}"
+                for gap_start, gap_end in self.gaps
+            ]
+            gaps_text = ", ".join(gap_strs)
+            result = f"{result} (кроме {gaps_text})"
+
+        return result
+
+    class Config:
+        json_encoders = {
+            date: lambda v: v.isoformat(),
+            time: lambda v: v.isoformat()
+        }
+
+
 class SchedulingResult(BaseModel):
     """Result of a scheduling operation (booking or cancellation)."""
     success: bool
@@ -185,7 +277,7 @@ class SchedulingResult(BaseModel):
 
 class AgentAction(BaseModel):
     """Action to take after processing a message."""
-    action: Literal["reply", "wait", "escalate", "schedule", "check_availability", "schedule_followup"]
+    action: Literal["reply", "wait", "schedule", "check_availability", "schedule_followup"]
     message: Optional[str] = None
     reason: Optional[str] = None  # Why this action was chosen
     scheduling_data: Optional[dict] = None  # For scheduling actions: {"slot_id": "...", "topic": "..."}
@@ -224,10 +316,8 @@ class AgentConfig(BaseModel):
     include_knowledge_base: bool = True
     max_knowledge_tokens: int = 4000  # Token limit for KB context
 
-    escalation_keywords: list[str] = Field(default_factory=lambda: [
-        "call", "phone", "urgent", "срочно", "позвони", "звонок"
-    ])
-    escalation_notify: Optional[str] = None  # Telegram ID to notify
+    escalation_keywords: list[str] = Field(default_factory=list)  # Disabled - too many false positives
+    escalation_notify: Optional[str] = None  # Telegram ID to notify (disabled)
     typing_simulation: bool = True  # Simulate typing indicator
     auto_follow_up_hours: int = 24  # Hours before follow-up if no response
 
