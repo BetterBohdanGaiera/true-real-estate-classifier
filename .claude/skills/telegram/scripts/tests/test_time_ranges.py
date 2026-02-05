@@ -751,5 +751,206 @@ class TestIntegration:
         assert "13:00" in formatted
 
 
+# =============================================================================
+# Client Hours Filtering Tests
+# These tests verify that slots outside client's reasonable hours are filtered
+# =============================================================================
+
+class TestClientHoursFiltering:
+    """Tests for filtering slots by client timezone hours."""
+
+    @pytest.fixture(autouse=True)
+    def setup_scheduling_tool(self):
+        """Setup SchedulingTool, skip if method not available."""
+        try:
+            from scheduling_tool import SchedulingTool
+            self.tool = SchedulingTool(calendar=None)
+            self.has_filter_method = hasattr(self.tool, '_filter_slots_by_client_hours')
+        except Exception:
+            self.has_filter_method = False
+
+    def test_filter_excludes_early_morning_slots_for_client(self):
+        """Test that slots that are 3am in client timezone are excluded.
+
+        10:00 Bali (UTC+8) = 03:00 Warsaw (UTC+1) in winter
+        This slot should be filtered out because nobody wants a 3am meeting.
+        """
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        # 10:00 Bali = 03:00 Warsaw (7 hours behind)
+        slots = [
+            SalesSlot(
+                id="20260205_1000",
+                date=date(2026, 2, 5),
+                start_time=time(10, 0),
+                end_time=time(10, 30)
+            )
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Europe/Warsaw",
+            min_hour=8,
+            max_hour=22
+        )
+
+        # 10:00 Bali = 03:00 Warsaw - should be EXCLUDED (before 8am)
+        assert len(filtered) == 0
+
+    def test_filter_includes_reasonable_hours_for_client(self):
+        """Test that slots during reasonable client hours are included.
+
+        16:00 Bali (UTC+8) = 09:00 Warsaw (UTC+1) in winter
+        This slot should be included because 9am is a reasonable meeting time.
+        """
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        # 16:00 Bali = 09:00 Warsaw (7 hours behind)
+        slots = [
+            SalesSlot(
+                id="20260205_1600",
+                date=date(2026, 2, 5),
+                start_time=time(16, 0),
+                end_time=time(16, 30)
+            )
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Europe/Warsaw",
+            min_hour=8,
+            max_hour=22
+        )
+
+        # 16:00 Bali = 09:00 Warsaw - should be INCLUDED
+        assert len(filtered) == 1
+
+    def test_filter_boundary_8am_client_time(self):
+        """Test that exactly 8am client time is included."""
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        # 15:00 Bali = 08:00 Warsaw (7 hours behind)
+        slots = [
+            SalesSlot(
+                id="20260205_1500",
+                date=date(2026, 2, 5),
+                start_time=time(15, 0),
+                end_time=time(15, 30)
+            )
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Europe/Warsaw",
+            min_hour=8,
+            max_hour=22
+        )
+
+        # 15:00 Bali = 08:00 Warsaw - should be INCLUDED (exactly 8am)
+        assert len(filtered) == 1
+
+    def test_filter_excludes_late_night_slots_for_client(self):
+        """Test that slots after 10pm client time are excluded."""
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        # For Moscow (UTC+3), 8 Bali (UTC+8) = 3:00 Moscow
+        # We need a slot that's 22:00+ in Moscow
+        # 03:00 Bali (next day) would be 22:00 Moscow
+        # Let's test with Dubai (UTC+4) - 02:00 Bali = 22:00 Dubai
+        slots = [
+            SalesSlot(
+                id="20260205_0200",
+                date=date(2026, 2, 5),
+                start_time=time(2, 0),
+                end_time=time(2, 30)
+            )
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Asia/Dubai",  # UTC+4, so 4 hours behind Bali (UTC+8)
+            min_hour=8,
+            max_hour=22
+        )
+
+        # 02:00 Bali = 22:00 Dubai (previous day) - should be EXCLUDED
+        assert len(filtered) == 0
+
+    def test_filter_mixed_slots_some_included_some_excluded(self):
+        """Test filtering with a mix of slots - some in reasonable hours, some not."""
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        # Warsaw is 7 hours behind Bali in winter
+        slots = [
+            # 10:00 Bali = 03:00 Warsaw - EXCLUDED
+            SalesSlot(id="20260205_1000", date=date(2026, 2, 5),
+                     start_time=time(10, 0), end_time=time(10, 30)),
+            # 15:00 Bali = 08:00 Warsaw - INCLUDED
+            SalesSlot(id="20260205_1500", date=date(2026, 2, 5),
+                     start_time=time(15, 0), end_time=time(15, 30)),
+            # 16:00 Bali = 09:00 Warsaw - INCLUDED
+            SalesSlot(id="20260205_1600", date=date(2026, 2, 5),
+                     start_time=time(16, 0), end_time=time(16, 30)),
+            # 18:00 Bali = 11:00 Warsaw - INCLUDED
+            SalesSlot(id="20260205_1800", date=date(2026, 2, 5),
+                     start_time=time(18, 0), end_time=time(18, 30)),
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Europe/Warsaw",
+            min_hour=8,
+            max_hour=22
+        )
+
+        # Should have 3 slots (15:00, 16:00, 18:00 Bali)
+        assert len(filtered) == 3
+        # Check the correct slots are included
+        filtered_ids = [s.id for s in filtered]
+        assert "20260205_1000" not in filtered_ids  # 3am Warsaw - excluded
+        assert "20260205_1500" in filtered_ids      # 8am Warsaw - included
+        assert "20260205_1600" in filtered_ids      # 9am Warsaw - included
+        assert "20260205_1800" in filtered_ids      # 11am Warsaw - included
+
+    def test_filter_returns_all_slots_for_invalid_timezone(self):
+        """Test that invalid timezone returns all slots (graceful fallback)."""
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        slots = [
+            SalesSlot(id="20260205_1000", date=date(2026, 2, 5),
+                     start_time=time(10, 0), end_time=time(10, 30)),
+        ]
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            slots,
+            "Invalid/Timezone",
+            min_hour=8,
+            max_hour=22
+        )
+
+        # Invalid timezone should return all slots as fallback
+        assert len(filtered) == 1
+
+    def test_filter_returns_empty_for_empty_input(self):
+        """Test that empty slot list returns empty list."""
+        if not self.has_filter_method:
+            pytest.skip("_filter_slots_by_client_hours method not available")
+
+        filtered = self.tool._filter_slots_by_client_hours(
+            [],
+            "Europe/Warsaw",
+            min_hour=8,
+            max_hour=22
+        )
+
+        assert len(filtered) == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

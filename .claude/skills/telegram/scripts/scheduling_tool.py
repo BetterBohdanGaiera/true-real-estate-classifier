@@ -456,6 +456,58 @@ class SchedulingTool:
         except (KeyError, ValueError):
             return timezone_str
 
+    def _filter_slots_by_client_hours(
+        self,
+        slots: list[SalesSlot],
+        client_timezone: str,
+        min_hour: int = 8,
+        max_hour: int = 22
+    ) -> list[SalesSlot]:
+        """
+        Filter out slots that fall outside reasonable hours in client's timezone.
+
+        Nobody wants to schedule a meeting at 3am their time. This method filters
+        out slots that would be too early or too late in the client's local time.
+
+        Args:
+            slots: List of SalesSlot objects (in Bali timezone)
+            client_timezone: Client's timezone (e.g., "Europe/Warsaw")
+            min_hour: Minimum acceptable hour in client timezone (default: 8 = 8am)
+            max_hour: Maximum acceptable hour in client timezone (default: 22 = 10pm)
+
+        Returns:
+            Filtered list of slots that fall within acceptable client hours
+
+        Example:
+            If min_hour=8 and client is in Warsaw (UTC+1) while Bali is UTC+8:
+            - Slot at 10:00 Bali = 03:00 Warsaw → EXCLUDED (before 8am)
+            - Slot at 15:00 Bali = 08:00 Warsaw → INCLUDED (exactly 8am)
+            - Slot at 16:00 Bali = 09:00 Warsaw → INCLUDED
+        """
+        if not slots or not client_timezone:
+            return slots
+
+        try:
+            client_tz = ZoneInfo(client_timezone)
+        except (KeyError, ValueError):
+            # Invalid timezone, return all slots
+            return slots
+
+        filtered_slots = []
+        for slot in slots:
+            # Create datetime in Bali timezone
+            slot_dt_bali = datetime.combine(slot.date, slot.start_time, tzinfo=BALI_TZ)
+
+            # Convert to client timezone
+            slot_dt_client = slot_dt_bali.astimezone(client_tz)
+            client_hour = slot_dt_client.hour
+
+            # Check if within acceptable hours
+            if min_hour <= client_hour < max_hour:
+                filtered_slots.append(slot)
+
+        return filtered_slots
+
     def _format_time_ranges_natural(
         self,
         ranges: list[TimeRange],
@@ -586,6 +638,16 @@ class SchedulingTool:
                 if slot.date > bali_today or
                 (slot.date == bali_today and slot.start_time > now_bali.time())
             ]
+
+        # Filter out slots that are too early/late in client's timezone
+        # Nobody wants a meeting at 3am their time!
+        if client_timezone:
+            available_slots = self._filter_slots_by_client_hours(
+                available_slots,
+                client_timezone,
+                min_hour=8,   # No earlier than 8am client time
+                max_hour=22   # No later than 10pm client time
+            )
 
         if not available_slots:
             return f"К сожалению, нет свободных слотов в ближайшие {days} дней."
