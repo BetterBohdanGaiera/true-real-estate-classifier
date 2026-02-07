@@ -57,17 +57,12 @@ htmlcov/
 .claude/skills/cloudflare-manager/
 .claude/skills/brand-agency/
 .claude/skills/docx/
-.claude/skills/eleven-labs/
 .claude/skills/frontend-design/
 .claude/skills/google-calendar/
 .claude/skills/meta-skill/
 .claude/skills/pdf/
 .claude/skills/video-analysis/
 .claude/skills/video-processor/
-.claude/skills/zoom/
-
-# Exclude telegram scripts directory after refactoring into src/sales_agent/
-.claude/skills/telegram/
 
 # ============================================================================
 # Documentation and Spec Files
