@@ -37,7 +37,7 @@ services:
       # Persistent data volume - survives container restarts
       - postgres_data:/var/lib/postgresql/data
       # Mount migrations for initialization (optional, run manually if needed)
-      - ../../src/sales_agent/migrations:/docker-entrypoint-initdb.d:ro
+      - ../../src/telegram_sales_bot/database/migrations:/docker-entrypoint-initdb.d:ro
     ports:
       # Expose PostgreSQL port for debugging/development
       # Remove or comment out in production for security
@@ -89,18 +89,13 @@ services:
       - ${HOME}/.sales_registry:/root/.sales_registry:ro
       # Mount Google Calendar credentials (optional, for calendar integration)
       - ../../.claude/skills/google-calendar/accounts:/app/.claude/skills/google-calendar/accounts:ro
-      # Mount knowledge base (optional, for AI knowledge)
-      - ../../knowledge_base_final:/app/knowledge_base_final:ro
-      # Mount skills directories (for tone-of-voice and how-to-communicate)
-      - ../../.claude/skills/tone-of-voice:/app/.claude/skills/tone-of-voice:ro
-      - ../../.claude/skills/how-to-communicate:/app/.claude/skills/how-to-communicate:ro
-      # Mount config directory (for prospects.json and agent_config.json)
-      - ../../src/sales_agent/config:/app/src/sales_agent/config
+      # Mount config directory (for prospects.json and agent_config.json) - needs read-write
+      - ../../.claude/skills/telegram/config:/app/config:rw
     command: >
       sh -c "if [ -n \"$$REP_TELEGRAM_ID\" ]; then
-        python src/sales_agent/daemon.py --rep-telegram-id $$REP_TELEGRAM_ID;
+        python -m telegram_sales_bot.core.daemon --rep-telegram-id $$REP_TELEGRAM_ID;
       else
-        python src/sales_agent/daemon.py;
+        python -m telegram_sales_bot.core.daemon;
       fi"
     restart: unless-stopped
     logging:

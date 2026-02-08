@@ -99,18 +99,20 @@ def load_test_config() -> dict:
         return json.load(f)
 
 
-async def reset_test_prospect(clean_chat: bool = False) -> dict:
+async def reset_test_prospect(clean_chat: bool = False, skip_db: bool = False) -> dict:
     """
     Reset test prospect to 'new' status.
 
     This function performs the following:
     1. Loads test account configuration
     2. Resets the prospect status to 'new' and clears conversation history
-    3. Cancels any pending scheduled actions from the database
+    3. Cancels any pending scheduled actions from the database (unless skip_db=True)
     4. Optionally deletes agent messages from Telegram chat
 
     Args:
         clean_chat: If True, also delete agent messages from Telegram
+        skip_db: If True, skip cancelling scheduled actions in the database
+                 (useful when Docker starts with a fresh DB volume)
 
     Returns:
         dict with reset status including:
@@ -165,23 +167,26 @@ async def reset_test_prospect(clean_chat: bool = False) -> dict:
             "error": str(e)
         }
 
-    # Clear pending scheduled actions
-    try:
-        cancelled = await cancel_pending_for_prospect(
-            str(telegram_id),
-            reason="manual_test_reset"
-        )
-        if cancelled > 0:
-            console.print(f"[green]>[/green] Cancelled {cancelled} pending scheduled action(s)")
-        else:
-            console.print(f"[dim]  No pending scheduled actions to cancel[/dim]")
-    except RuntimeError as e:
-        # RuntimeError is raised when DATABASE_URL is not set
-        console.print(f"[yellow]![/yellow] Could not cancel scheduled actions: {e}")
-        console.print(f"[dim]  (This is OK if DATABASE_URL is not configured)[/dim]")
-    except Exception as e:
-        console.print(f"[yellow]![/yellow] Could not cancel scheduled actions: {e}")
-        console.print(f"[dim]  (This is OK if DATABASE_URL is not configured)[/dim]")
+    # Clear pending scheduled actions (skip when Docker starts with fresh DB)
+    if skip_db:
+        console.print(f"[dim]  Skipping DB cleanup (Docker starts with fresh volume)[/dim]")
+    else:
+        try:
+            cancelled = await cancel_pending_for_prospect(
+                str(telegram_id),
+                reason="manual_test_reset"
+            )
+            if cancelled > 0:
+                console.print(f"[green]>[/green] Cancelled {cancelled} pending scheduled action(s)")
+            else:
+                console.print(f"[dim]  No pending scheduled actions to cancel[/dim]")
+        except RuntimeError as e:
+            # RuntimeError is raised when DATABASE_URL is not set
+            console.print(f"[yellow]![/yellow] Could not cancel scheduled actions: {e}")
+            console.print(f"[dim]  (This is OK if DATABASE_URL is not configured)[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]![/yellow] Could not cancel scheduled actions: {e}")
+            console.print(f"[dim]  (This is OK if DATABASE_URL is not configured)[/dim]")
 
     # Clean Telegram chat if requested
     deleted_count = 0
@@ -240,7 +245,7 @@ async def start_test_session(clean_chat: bool = False) -> None:
 
     # Start daemon
     console.print("\n[cyan]Starting daemon...[/cyan]")
-    daemon_script = PROJECT_ROOT / "src" / "sales_agent" / "daemon.py"
+    daemon_script = SKILLS_BASE / "telegram" / "scripts" / "daemon.py"
 
     if not daemon_script.exists():
         console.print(f"[red]Error: Daemon script not found at {daemon_script}[/red]")
@@ -265,6 +270,85 @@ async def start_test_session(clean_chat: bool = False) -> None:
     subprocess.run([sys.executable, str(daemon_script)], check=False)
 
 
+async def start_docker_test_session(clean_chat: bool = False) -> None:
+    """
+    Reset test prospect and start daemon via Docker containers.
+
+    This function:
+    1. Resets the test prospect to 'new' status (skips DB cleanup since Docker starts fresh)
+    2. Tears down any previous Docker state with `docker compose down -v`
+    3. Builds and starts postgres + telegram-agent in foreground
+    4. Streams logs until Ctrl+C
+    5. Cleans up on exit with `docker compose down`
+
+    Args:
+        clean_chat: If True, also delete agent messages from Telegram before starting
+    """
+    console.print(Panel(
+        "[bold]Docker Test Session[/bold]\n"
+        "Resetting test prospect and starting daemon in Docker",
+        title="Telegram Agent Test (Docker)",
+        width=100
+    ))
+
+    # Reset prospect (skip DB since Docker DB starts fresh with down -v)
+    result = await reset_test_prospect(clean_chat=clean_chat, skip_db=True)
+
+    if result.get("error"):
+        console.print(f"\n[yellow]Warning: {result['error']}[/yellow]")
+        console.print("[dim]Continuing with Docker start anyway...[/dim]")
+
+    # Close database pool before Docker operations
+    try:
+        await close_pool()
+    except Exception:
+        pass
+
+    console.print("\n[bold green]Test prospect ready![/bold green]")
+    console.print(f"Prospect: {result['name']} ({result['telegram_id']})")
+    console.print("Status: NEW (initial message will be sent)")
+
+    # Docker compose file path
+    compose_file = PROJECT_ROOT / "deployment" / "docker" / "docker-compose.yml"
+
+    if not compose_file.exists():
+        console.print(f"[red]Error: Docker compose file not found at {compose_file}[/red]")
+        sys.exit(1)
+
+    # Tear down previous state (fresh DB = no stale scheduled actions)
+    console.print("\n[cyan]Tearing down previous Docker state...[/cyan]")
+    subprocess.run(
+        ["docker", "compose", "-f", str(compose_file), "down", "-v"],
+        check=False
+    )
+
+    console.print(Panel(
+        "[bold]Docker containers will now start[/bold]\n\n"
+        "Services: postgres + telegram-agent\n"
+        "The initial message will be sent to the test prospect.\n"
+        "Respond via Telegram to test the conversation flow.\n\n"
+        "Press Ctrl+C to stop the containers.",
+        title="Instructions",
+        width=100
+    ))
+
+    # Build and start postgres + telegram-agent only (foreground, streams logs)
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_file),
+             "up", "--build", "postgres", "telegram-agent"],
+            check=False
+        )
+    finally:
+        # Clean up on exit
+        console.print("\n[cyan]Cleaning up Docker containers...[/cyan]")
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_file), "down"],
+            check=False
+        )
+        console.print("[green]Docker cleanup complete.[/green]")
+
+
 def main() -> None:
     """CLI entry point for manual testing script."""
     parser = argparse.ArgumentParser(
@@ -283,6 +367,12 @@ Examples:
 
   # Reset only with chat cleanup
   uv run python .claude/skills/testing/scripts/manual_test.py --reset-only --clean-chat
+
+  # Run daemon in Docker containers
+  uv run python .claude/skills/testing/scripts/manual_test.py --docker
+
+  # Docker with chat cleanup
+  uv run python .claude/skills/testing/scripts/manual_test.py --docker --clean-chat
 """
     )
     parser.add_argument(
@@ -295,10 +385,18 @@ Examples:
         action="store_true",
         help="Also delete agent messages from Telegram chat"
     )
+    parser.add_argument(
+        "--docker",
+        action="store_true",
+        help="Run daemon in Docker instead of local subprocess"
+    )
 
     args = parser.parse_args()
 
-    if args.reset_only:
+    if args.docker:
+        # Docker test session
+        asyncio.run(start_docker_test_session(clean_chat=args.clean_chat))
+    elif args.reset_only:
         # Just reset, don't start daemon
         asyncio.run(reset_test_prospect(clean_chat=args.clean_chat))
         console.print("\n[green]Reset complete![/green]")

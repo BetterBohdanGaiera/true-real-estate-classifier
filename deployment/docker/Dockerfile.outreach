@@ -80,7 +80,7 @@ COPY src/ ./src/
 
 # Health check - verifies the Python environment and imports work
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "from sales_agent.registry.outreach_daemon import OutreachDaemon; print('OK')" || exit 1
+    CMD python -c "from telegram_sales_bot.registry.outreach import OutreachDaemon; print('OK')" || exit 1
 
 # Expose no ports (daemon uses outbound connections only)
 
@@ -91,4 +91,4 @@ LABEL org.opencontainers.image.title="Outreach Daemon" \
       org.opencontainers.image.source="https://github.com/TrueRealEstate/Classifier"
 
 # Run the outreach daemon (venv python is already on PATH)
-CMD ["python", "src/sales_agent/registry/outreach_daemon.py"]
+CMD ["python", "-m", "telegram_sales_bot.registry.outreach"]

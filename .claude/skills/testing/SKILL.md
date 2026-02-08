@@ -147,6 +147,33 @@ PYTHONPATH=src uv run python src/sales_agent/testing/manual_test.py --clean-chat
 3. Optionally clears Telegram chat history
 4. Starts the daemon which sends initial outreach message
 
+## Docker Testing
+
+Run the agent in Docker containers (postgres + telegram-agent) for production-like testing.
+
+### Start Docker Test Session
+
+```bash
+uv run python .claude/skills/testing/scripts/manual_test.py --docker
+```
+
+### Docker with Chat Cleanup
+
+```bash
+uv run python .claude/skills/testing/scripts/manual_test.py --docker --clean-chat
+```
+
+### What Docker Test Does
+
+1. Resets @bohdanpytaichuk to `"new"` status in prospects.json (skips DB cleanup)
+2. Optionally clears Telegram chat history
+3. Tears down previous Docker state (`docker compose down -v`)
+4. Builds and starts `postgres` + `telegram-agent` containers in foreground
+5. Streams logs until Ctrl+C
+6. Cleans up containers on exit (`docker compose down`)
+
+**Note:** DB cleanup is skipped because `docker compose down -v` removes the postgres volume, giving a fresh database each run.
+
 ---
 
 ## Mock Telegram Daemon

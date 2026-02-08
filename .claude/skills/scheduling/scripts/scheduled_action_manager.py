@@ -625,8 +625,11 @@ async def delete_old_actions(days: int = 30) -> int:
             """
             DELETE FROM scheduled_actions
             WHERE status IN ($1, $2)
-              AND updated_at < NOW() - INTERVAL '%s days'
-            """ % days,
+              AND updated_at < NOW() - make_interval(days => $3)
+            """,
+            ScheduledActionStatus.EXECUTED.value,
+            ScheduledActionStatus.CANCELLED.value,
+            days,
             ScheduledActionStatus.EXECUTED.value,
             ScheduledActionStatus.CANCELLED.value,
         )

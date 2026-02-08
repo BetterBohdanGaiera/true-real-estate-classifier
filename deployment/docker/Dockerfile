@@ -52,7 +52,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     # Add virtual environment to PATH
     PATH="/app/.venv/bin:$PATH" \
-    # Set Python path for imports (telegram_fetch now in src/sales_agent/telegram/)
+    # Set Python path for package imports
     PYTHONPATH="/app/src"
 
 # Install only runtime dependencies
@@ -72,16 +72,8 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages/uv* /usr/local/lib/p
 # Copy pyproject.toml and uv.lock (needed for uv run)
 COPY pyproject.toml uv.lock ./
 
-# Copy application source code (includes telegram_fetch after refactoring)
+# Copy the telegram_sales_bot package
 COPY src/ ./src/
-
-# Copy skills directories (tone-of-voice, how-to-communicate for agent prompts)
-# Note: telegram_fetch is now in src/sales_agent/telegram/, no longer needs separate copy
-COPY .claude/skills/tone-of-voice/ ./.claude/skills/tone-of-voice/
-COPY .claude/skills/how-to-communicate/ ./.claude/skills/how-to-communicate/
-
-# Copy knowledge base
-COPY knowledge_base_final/ ./knowledge_base_final/
 
 # Create directories for credentials (will be mounted as volumes)
 RUN mkdir -p /root/.telegram_dl /root/.zoom_credentials
@@ -93,7 +85,7 @@ RUN mkdir -p /root/.telegram_dl /root/.zoom_credentials
 
 # Health check - verifies the Python environment and imports work
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "from sales_agent.daemon import TelegramDaemon; print('OK')" || exit 1
+    CMD python -c "from telegram_sales_bot.core import daemon; print('OK')" || exit 1
 
 # Expose no ports (daemon uses outbound connections only)
 
@@ -104,4 +96,4 @@ LABEL org.opencontainers.image.title="Telegram Agent Daemon" \
       org.opencontainers.image.source="https://github.com/TrueRealEstate/Classifier"
 
 # Run the daemon (venv python is already on PATH)
-CMD ["python", "src/sales_agent/daemon.py"]
+CMD ["python", "-m", "telegram_sales_bot.core.daemon"]

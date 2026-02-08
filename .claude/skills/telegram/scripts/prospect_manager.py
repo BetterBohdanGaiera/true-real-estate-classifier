@@ -15,7 +15,8 @@ class ProspectManager:
 
     def __init__(self, config_path: str | Path):
         self.config_path = Path(config_path)
-        self._prospects: dict[str, Prospect] = {}
+        self._prospects: dict[str, Prospect] = {}  # keyed by telegram_id
+        self._username_index: dict[str, str] = {}  # username -> telegram_id key
         self._load_prospects()
 
     def _load_prospects(self) -> None:
@@ -63,6 +64,9 @@ class ProspectManager:
             prospect = Prospect(**p_data)
             key = self._normalize_id(prospect.telegram_id)
             self._prospects[key] = prospect
+            # Build username index for lookup by @username
+            if prospect.username:
+                self._username_index[prospect.username.lower()] = key
 
     def _save_prospects(self) -> None:
         """Save prospects to config file."""
@@ -122,15 +126,35 @@ class ProspectManager:
             if p.status in [ProspectStatus.CONTACTED, ProspectStatus.IN_CONVERSATION]
         ]
 
-    def is_prospect(self, telegram_id: int | str) -> bool:
-        """Check if a telegram ID is a known prospect."""
+    def _resolve_key(self, telegram_id: int | str) -> Optional[str]:
+        """
+        Resolve telegram_id or username to the internal key.
+
+        Supports lookup by:
+        - Numeric telegram_id (int or str of digits)
+        - Username with or without @ prefix
+
+        Returns the internal key or None if not found.
+        """
         key = self._normalize_id(telegram_id)
-        return key in self._prospects
+        # Direct lookup by telegram_id
+        if key in self._prospects:
+            return key
+        # Try username index (for @username lookups)
+        if key in self._username_index:
+            return self._username_index[key]
+        return None
+
+    def is_prospect(self, telegram_id: int | str) -> bool:
+        """Check if a telegram ID or username is a known prospect."""
+        return self._resolve_key(telegram_id) is not None
 
     def get_prospect(self, telegram_id: int | str) -> Optional[Prospect]:
-        """Get prospect by telegram ID."""
-        key = self._normalize_id(telegram_id)
-        return self._prospects.get(key)
+        """Get prospect by telegram ID or username."""
+        key = self._resolve_key(telegram_id)
+        if key:
+            return self._prospects.get(key)
+        return None
 
     def add_prospect(
         self,
@@ -259,6 +283,33 @@ class ProspectManager:
             raise ValueError(f"Prospect {telegram_id} not found")
 
         prospect.email = email
+        self._save_prospects()
+
+    def update_prospect_timezone(
+        self,
+        telegram_id: int | str,
+        timezone: str,
+        confidence: float
+    ) -> None:
+        """
+        Update prospect's estimated timezone and confidence score.
+
+        Args:
+            telegram_id: Telegram ID of the prospect
+            timezone: Timezone string (e.g., "Europe/Moscow", "Asia/Dubai")
+            confidence: Confidence score for the estimate (0.0-1.0)
+
+        Raises:
+            ValueError: If prospect not found
+        """
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+
+        if not prospect:
+            raise ValueError(f"Prospect {telegram_id} not found")
+
+        prospect.estimated_timezone = timezone
+        prospect.timezone_confidence = confidence
         self._save_prospects()
 
     def set_human_active(self, telegram_id: int | str) -> None:
@@ -471,7 +522,7 @@ class ProspectManager:
         preserving identity information (telegram_id, name, context, notes).
 
         Args:
-            telegram_id: Telegram ID of the prospect to reset
+            telegram_id: Telegram ID or username of the prospect to reset
 
         Returns:
             List of agent message IDs from conversation history (for optional deletion)
@@ -479,7 +530,9 @@ class ProspectManager:
         Raises:
             ValueError: If prospect not found
         """
-        key = self._normalize_id(telegram_id)
+        key = self._resolve_key(telegram_id)
+        if not key:
+            raise ValueError(f"Prospect {telegram_id} not found")
         prospect = self._prospects.get(key)
 
         if not prospect:

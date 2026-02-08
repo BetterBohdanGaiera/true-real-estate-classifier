@@ -2,17 +2,18 @@
 # This file reduces Docker image size by excluding development-only files
 
 # ============================================================================
-# Large Data Directories (2.1GB+ excluded)
+# Large Data Directories
 # ============================================================================
 data/
 knowledge_base/
+adws/
+scripts/
+visualization/
 
 # ============================================================================
 # Development Directories
 # ============================================================================
-scripts/
 specs/
-adws/
 ai_docs/
 logs/
 
@@ -45,7 +46,6 @@ htmlcov/
 # ============================================================================
 # Claude Code Development Files
 # ============================================================================
-# Exclude all .claude except required skills
 .claude/agents/
 .claude/commands/
 .claude/hooks/
@@ -53,31 +53,22 @@ htmlcov/
 .claude/status_lines/
 .claude/data/
 
-# Exclude unused skills
-.claude/skills/cloudflare-manager/
-.claude/skills/brand-agency/
-.claude/skills/docx/
-.claude/skills/frontend-design/
+# Excluded skills (no longer needed)
+.claude/skills/testing/
+.claude/skills/manual-testing/
 .claude/skills/google-calendar/
-.claude/skills/meta-skill/
-.claude/skills/pdf/
-.claude/skills/video-analysis/
-.claude/skills/video-processor/
 
 # ============================================================================
 # Documentation and Spec Files
 # ============================================================================
-# Exclude docs but keep knowledge base and skill references
 /docs/*.md
 /specs/*.md
-/follow_up.md
 CHANGELOG.md
 CONTRIBUTING.md
 LICENSE.md
-# Keep: knowledge_base_final/*.md, .claude/skills/**/*.md, CLAUDE.md
 
 # ============================================================================
-# Environment and Config Files (handled separately)
+# Environment and Config Files
 # ============================================================================
 .env
 .env2
@@ -95,14 +86,6 @@ LICENSE.md
 .DS_Store
 
 # ============================================================================
-# Testing and Coverage
-# ============================================================================
-testing/
-tests/
-test_*.py
-*_test.py
-
-# ============================================================================
 # Build Artifacts
 # ============================================================================
 dist/
@@ -110,24 +93,13 @@ build/
 *.whl
 
 # ============================================================================
-# Stray Root Files (moved to docs/ and specs/)
-# ============================================================================
-docs/
-
-# ============================================================================
-# Docker Compose (not needed in image)
+# Docker Compose
 # ============================================================================
 deployment/docker/docker-compose.yml
 docker-compose*.yml
 
 # ============================================================================
-# KEEP - Required for production
+# Temporary and old files
 # ============================================================================
-# !src/sales_agent/
-# !knowledge_base_final/
-# !.claude/skills/tone-of-voice/
-# !.claude/skills/how-to-communicate/
-# !.claude/skills/zoom-calendar-meeting/
-# !pyproject.toml
-# !uv.lock
-# !deployment/docker/Dockerfile
+fix_imports.py
+src/telegram_sales_bot/knowledge_old/

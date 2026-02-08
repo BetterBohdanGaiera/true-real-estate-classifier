@@ -80,7 +80,7 @@ COPY src/ ./src/
 
 # Health check - verifies the Python environment and imports work
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "from sales_agent.registry.registry_bot import RegistryBot; print('OK')" || exit 1
+    CMD python -c "from telegram_sales_bot.registry.bot import RegistryBot; print('OK')" || exit 1
 
 # Expose no ports (bot uses outbound connections only via polling)
 
@@ -91,4 +91,4 @@ LABEL org.opencontainers.image.title="Sales Rep Registry Bot" \
       org.opencontainers.image.source="https://github.com/TrueRealEstate/Classifier"
 
 # Run the registry bot (venv python is already on PATH)
-CMD ["python", "src/sales_agent/registry/run_registry_bot.py"]
+CMD ["python", "-m", "telegram_sales_bot.registry.runner"]

@@ -45,6 +45,7 @@ from prospect_manager import ProspectManager
 from models import AgentConfig, ProspectStatus, ScheduledActionType
 from message_buffer import MessageBuffer, BufferedMessage
 from pause_detector import detect_pause, PauseDetector
+from timezone_detector import estimate_timezone, TimezoneEstimate
 
 # Cross-skill imports
 from scheduler_service import SchedulerService
@@ -396,8 +397,46 @@ class TelegramDaemon:
         """Handle agent action (extracted from handle_incoming for reuse)."""
         # Handle check_availability action
         if action.action == "check_availability":
-            # Get available slots
-            availability_text = self.scheduling_tool.get_available_times(days=7)
+            # Detect client timezone if not already known with high confidence
+            client_tz = None
+            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
+                # Estimate from conversation history
+                message_timestamps = [
+                    msg.timestamp for msg in prospect.conversation_history
+                    if msg.timestamp and msg.sender == "prospect"
+                ]
+                if message_timestamps:
+                    tz_estimate = estimate_timezone(message_timestamps)
+
+                    if tz_estimate.confidence > 0.7:
+                        # Store in prospect record
+                        self.prospect_manager.update_prospect_timezone(
+                            prospect.telegram_id,
+                            tz_estimate.timezone,
+                            tz_estimate.confidence
+                        )
+                        prospect.estimated_timezone = tz_estimate.timezone
+                        prospect.timezone_confidence = tz_estimate.confidence
+                        console.print(
+                            f"[blue]Detected timezone: {tz_estimate.timezone} "
+                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
+                        )
+                        client_tz = tz_estimate.timezone
+                    else:
+                        console.print(
+                            f"[dim]Timezone estimate low confidence: {tz_estimate.timezone} "
+                            f"({tz_estimate.confidence:.2f})[/dim]"
+                        )
+            else:
+                # Use existing high-confidence timezone
+                client_tz = prospect.estimated_timezone
+                console.print(f"[dim]Using stored timezone: {client_tz}[/dim]")
+
+            # Get available slots with optional timezone for dual display
+            availability_text = self.scheduling_tool.get_available_times(
+                days=7,
+                client_timezone=client_tz
+            )
 
             # Send availability to user
             result = await self.service.send_message(
@@ -447,15 +486,45 @@ class TelegramDaemon:
                 console.print(f"[yellow]Schedule rejected - no email provided[/yellow]")
                 return
 
+            # Detect client timezone if not already known (for meeting invite timezone info)
+            client_tz = None
+            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
+                # Estimate from conversation history
+                message_timestamps = [
+                    msg.timestamp for msg in prospect.conversation_history
+                    if msg.timestamp and msg.sender == "prospect"
+                ]
+                if message_timestamps:
+                    tz_estimate = estimate_timezone(message_timestamps)
+
+                    if tz_estimate.confidence > 0.7:
+                        # Store in prospect record
+                        self.prospect_manager.update_prospect_timezone(
+                            prospect.telegram_id,
+                            tz_estimate.timezone,
+                            tz_estimate.confidence
+                        )
+                        prospect.estimated_timezone = tz_estimate.timezone
+                        prospect.timezone_confidence = tz_estimate.confidence
+                        console.print(
+                            f"[blue]Detected timezone for booking: {tz_estimate.timezone} "
+                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
+                        )
+                        client_tz = tz_estimate.timezone
+            else:
+                client_tz = prospect.estimated_timezone
+                console.print(f"[dim]Using stored timezone for booking: {client_tz}[/dim]")
+
             # Store email in prospect record
             self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
 
-            # Book the meeting
+            # Book the meeting (client_tz can be used for future timezone-aware features)
             booking_result = self.scheduling_tool.book_meeting(
                 slot_id=slot_id,
                 prospect=prospect,
                 client_email=client_email.strip(),
-                topic=topic
+                topic=topic,
+                client_timezone=client_tz
             )
 
             if booking_result.success:

@@ -44,10 +44,45 @@
 - Only use ONE test prospect (@bohdanpytaichuk) for testing - do not create multiple test prospects
 
 ### Testing Initial Outreach (Telegram Agent)
-The main agent reads from `src/sales_agent/config/prospects.json`. To test initial messages:
+The main agent reads from `.claude/skills/telegram/config/prospects.json`. To test initial messages:
 1. Set @bohdanpytaichuk status to `"new"` in prospects.json
-2. Run: `PYTHONPATH=src uv run python src/sales_agent/daemon.py`
+2. Run: `PYTHONPATH=src uv run python -m telegram_sales_bot.core.daemon`
 3. @bohdanpytaichuk receives the initial sales message from @BetterBohdan
 
 ### Testing Assignment Notifications (Outreach Daemon)
 The outreach daemon uses `test_prospects` database table and notifies sales reps about new assignments.
+
+## Package Structure
+
+This project uses a proper Python package structure located at `src/telegram_sales_bot/`:
+
+- **core/** - Main daemon, agent, service, and models
+- **prospects/** - Prospect management
+- **scheduling/** - Follow-ups, calendar integration, scheduled actions
+- **integrations/** - Zoom, Google Calendar, ElevenLabs
+- **temporal/** - Message buffering, pause detection, timezone handling
+- **humanizer/** - Natural timing and typo injection
+- **knowledge/** - Knowledge base loader and content (base/, tone/, methodology/)
+- **registry/** - Sales rep registration subsystem
+- **database/** - Database initialization and migrations
+- **cli/** - Command-line utilities (auth, setup, fetch)
+- **config/** - Configuration files (agent_config.json, sales_slots.json)
+
+### Running the Bot
+
+```bash
+# Run main sales daemon
+PYTHONPATH=src uv run python -m telegram_sales_bot.core.daemon
+
+# Run scheduler daemon (polling-based)
+PYTHONPATH=src uv run python -m telegram_sales_bot.scheduling.polling_daemon
+
+# Run registry bot
+PYTHONPATH=src uv run python -m telegram_sales_bot.registry.runner
+
+# Run outreach daemon
+PYTHONPATH=src uv run python -m telegram_sales_bot.registry.outreach
+
+# Initialize database
+PYTHONPATH=src uv run python -m telegram_sales_bot.database.init
+```
