@@ -38,8 +38,8 @@ from rich.panel import Panel
 load_dotenv()
 console = Console()
 
-# Path to migrations directory (at skill level: .claude/skills/database/migrations/)
-MIGRATIONS_DIR = SCRIPT_DIR.parent / "migrations"
+# Path to migrations directory (inside package)
+MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 async def check_database_connection() -> bool:
     """

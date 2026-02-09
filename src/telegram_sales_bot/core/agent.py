@@ -6,7 +6,7 @@ Supports multiple skills (tone-of-voice, how-to-communicate) and
 knowledge base integration for context-aware responses.
 """
 import os
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,7 +21,9 @@ from telegram_sales_bot.temporal.phrase_tracker import PhraseTracker
 from telegram_sales_bot.knowledge.loader import KnowledgeLoader
 
 # Load environment variables from project root
-load_dotenv(PROJECT_ROOT / '.env')
+_PACKAGE_DIR = Path(__file__).parent.parent  # src/telegram_sales_bot/
+_PROJECT_ROOT = _PACKAGE_DIR.parent.parent  # project root
+load_dotenv(_PROJECT_ROOT / '.env')
 load_dotenv()  # Also try current directory
 
 # Bali timezone for time calculations

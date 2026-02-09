@@ -9,7 +9,7 @@ import asyncio
 import json
 import random
 import signal
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,17 +19,7 @@ from rich.live import Live
 from rich.table import Table
 from telethon import events
 
-# Add skill paths for cross-skill imports
-SKILLS_BASE = SCRIPT_DIR.parent.parent
-ELEVEN_LABS_SCRIPTS = SKILLS_BASE / "eleven-labs/scripts"
-HUMANIZER_SCRIPTS = SKILLS_BASE / "humanizer/scripts"
-ZOOM_SCRIPTS = SKILLS_BASE / "zoom/scripts"
-TEMPORAL_SCRIPTS = SCRIPT_DIR  # temporal modules are in this skill now
-
-for path in [SCRIPT_DIR, SCHEDULING_SCRIPTS, DATABASE_SCRIPTS, ELEVEN_LABS_SCRIPTS,
-             HUMANIZER_SCRIPTS, ZOOM_SCRIPTS, REGISTER_SCRIPTS, TEMPORAL_SCRIPTS]:
-
-# Local telegram skill imports
+# Package imports
 from telegram_sales_bot.core.client import get_client, get_client_for_rep
 from telegram_sales_bot.core.service import TelegramService, is_private_chat
 from telegram_sales_bot.core.agent import TelegramAgent
@@ -39,19 +29,14 @@ from telegram_sales_bot.core.models import AgentConfig, ProspectStatus, Schedule
 from telegram_sales_bot.temporal.message_buffer import MessageBuffer, BufferedMessage
 from telegram_sales_bot.temporal.pause_detector import detect_pause, PauseDetector
 from telegram_sales_bot.temporal.timezone import estimate_timezone, TimezoneEstimate
-
-# Cross-skill imports
 from telegram_sales_bot.scheduling.scheduler import SchedulerService
 from telegram_sales_bot.scheduling.calendar import SalesCalendar
 from telegram_sales_bot.scheduling.tool import SchedulingTool
-import scheduled_action_manager
-from init import init_database
-from voice_transcriber import VoiceTranscriber
-from media_detector import detect_media_type
+from telegram_sales_bot.database.init import init_database
+from telegram_sales_bot.integrations.elevenlabs import VoiceTranscriber
+from telegram_sales_bot.integrations.media_detector import detect_media_type
 from telegram_sales_bot.integrations.google_calendar import CalendarConnector
 from telegram_sales_bot.integrations.zoom import ZoomBookingService
-
-# Import specific functions from scheduled_action_manager
 from telegram_sales_bot.scheduling.db import (
     create_scheduled_action,
     cancel_pending_for_prospect,
@@ -62,19 +47,24 @@ from telegram_sales_bot.scheduling.db import (
 
 console = Console()
 
-# Configuration paths
-# SCRIPT_DIR is .claude/skills/telegram/scripts/
-# CONFIG_DIR is .claude/skills/telegram/config/
-CONFIG_DIR = SCRIPT_DIR.parent / "config"
+# Configuration paths - resolve for Docker (/app/config) or local development
+PACKAGE_DIR = Path(__file__).parent.parent  # src/telegram_sales_bot/
+if Path("/app/config").exists():
+    # Docker: config is mounted at /app/config
+    CONFIG_DIR = Path("/app/config")
+else:
+    # Local: config is in .claude/skills/telegram/config/
+    PROJECT_ROOT = PACKAGE_DIR.parent.parent  # project root
+    CONFIG_DIR = PROJECT_ROOT / ".claude" / "skills" / "telegram" / "config"
+
 PROSPECTS_FILE = CONFIG_DIR / "prospects.json"
 AGENT_CONFIG_FILE = CONFIG_DIR / "agent_config.json"
-# Skills directories remain in .claude/skills/
-SKILLS_DIR = SKILLS_BASE
-TONE_OF_VOICE_DIR = SKILLS_DIR / "tone-of-voice"
-HOW_TO_COMMUNICATE_DIR = SKILLS_DIR / "how-to-communicate"
-# Knowledge base is at project root
-KNOWLEDGE_BASE_DIR = SCRIPT_DIR.parent.parent.parent.parent / "knowledge_base_final"
 SALES_CALENDAR_CONFIG = CONFIG_DIR / "sales_slots.json"
+
+# Knowledge, tone-of-voice, and methodology are inside the package
+KNOWLEDGE_BASE_DIR = PACKAGE_DIR / "knowledge" / "base"
+TONE_OF_VOICE_DIR = PACKAGE_DIR / "knowledge" / "tone"
+HOW_TO_COMMUNICATE_DIR = PACKAGE_DIR / "knowledge" / "methodology"
 
 class TelegramDaemon:
     """Main daemon that orchestrates the agent."""
@@ -125,7 +115,7 @@ class TelegramDaemon:
         # Per-rep mode: load rep from database and override config
         if self.rep_telegram_id:
             # Import here to avoid circular dependencies
-            from sales_rep_manager import get_by_telegram_id
+            from telegram_sales_bot.registry.rep_manager import get_by_telegram_id
             rep = await get_by_telegram_id(self.rep_telegram_id)
             if not rep:
                 raise RuntimeError(f"Sales rep with telegram_id={self.rep_telegram_id} not found in database")
@@ -183,7 +173,7 @@ class TelegramDaemon:
         # Initialize Calendar Connector for per-rep mode (optional)
         calendar_connector = None
         if self.rep_telegram_id:
-            from sales_rep_manager import get_by_telegram_id
+            from telegram_sales_bot.registry.rep_manager import get_by_telegram_id
             rep = await get_by_telegram_id(self.rep_telegram_id)
             if rep and rep.calendar_connected:
                 calendar_connector = CalendarConnector()
