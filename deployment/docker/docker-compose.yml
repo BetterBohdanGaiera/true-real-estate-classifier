@@ -90,7 +90,8 @@ services:
       # Mount Zoom credentials (optional, for Zoom meeting scheduling)
       - ${HOME}/.zoom_credentials:/home/agent/.zoom_credentials:ro
       # Mount sales registry for per-rep calendar tokens (optional)
-      - ${HOME}/.sales_registry:/home/agent/.sales_registry:ro
+      # Needs read-write: _load_credentials() saves refreshed OAuth tokens
+      - ${HOME}/.sales_registry:/home/agent/.sales_registry:rw
       # Mount Google Calendar credentials (optional, for calendar integration)
       - ../../.claude/skills/google-calendar/accounts:/app/.claude/skills/google-calendar/accounts:ro
       # Mount config directory (for prospects.json and agent_config.json) - needs read-write

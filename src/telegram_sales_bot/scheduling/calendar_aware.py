@@ -36,7 +36,7 @@ from telegram_sales_bot.core.models import SalesSlot
 
 # Try to import CalendarConnector (gracefully handle if not available)
 try:
-    from sales_agent.registry.calendar_connector import CalendarConnector
+    from telegram_sales_bot.integrations.google_calendar import CalendarConnector
 except ImportError:
     CalendarConnector = None
 

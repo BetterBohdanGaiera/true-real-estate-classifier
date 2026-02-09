@@ -233,6 +233,128 @@ class SalesCalendar:
 
         return available_slots
 
+    def get_available_slots_from_calendar(
+        self,
+        calendar_connector=None,
+        rep_telegram_id: Optional[int] = None,
+        from_date: Optional[date] = None,
+        days: int = 7,
+    ) -> list[SalesSlot]:
+        """
+        Get available slots using real Google Calendar data when available.
+
+        When calendar_connector is provided and the rep has connected their calendar,
+        generates working hour slots and filters out any that overlap with busy periods
+        from Google Calendar.
+
+        Falls back to get_available_slots() (mock behavior) when calendar is not connected.
+
+        Args:
+            calendar_connector: A CalendarConnector instance with is_connected() and
+                get_busy_slots() methods. If None, falls back to mock behavior.
+            rep_telegram_id: Telegram ID of the sales rep whose calendar to check.
+            from_date: Start date for generating slots. Defaults to today.
+            days: Number of days ahead to generate slots for.
+
+        Returns:
+            List of available SalesSlot objects, sorted by date and start time.
+        """
+        # Check if we can use real calendar
+        use_real_calendar = (
+            calendar_connector is not None
+            and rep_telegram_id is not None
+            and hasattr(calendar_connector, 'is_connected')
+            and calendar_connector.is_connected(rep_telegram_id)
+        )
+
+        if not use_real_calendar:
+            # Fall back to existing mock behavior
+            return self.get_available_slots(from_date=from_date, days=days)
+
+        # Generate ALL working hour slots (not random - all available)
+        if from_date is None:
+            from_date = date.today()
+
+        end_date = from_date + timedelta(days=days)
+        salesperson = self._config.get("salesperson", "Эксперт True Real Estate")
+        blocked_dates = self._config.get("blocked_dates", [])
+        blocked_dates_set = {date.fromisoformat(d) if isinstance(d, str) else d for d in blocked_dates}
+
+        all_working_slots: list[SalesSlot] = []
+
+        for day_offset in range(days):
+            current_date = from_date + timedelta(days=day_offset)
+
+            # Skip weekends
+            if current_date.weekday() >= 5:
+                continue
+
+            # Skip blocked dates
+            if current_date in blocked_dates_set:
+                continue
+
+            for hour in WORKING_HOURS:
+                slot_id = f"{current_date.strftime('%Y%m%d')}_{hour:02d}00"
+                start_time_val = time(hour=hour, minute=0)
+                end_time_val = time(hour=hour, minute=SLOT_DURATION_MINUTES)
+
+                slot = SalesSlot(
+                    id=slot_id,
+                    date=current_date,
+                    start_time=start_time_val,
+                    end_time=end_time_val,
+                    salesperson=salesperson,
+                    is_available=True,
+                    booked_by=None,
+                )
+                all_working_slots.append(slot)
+
+        # Check for already-booked slots in our internal data
+        booked_ids = {s.id for s in self._slots if not s.is_available or s.booked_by is not None}
+
+        # Filter using Google Calendar busy periods
+        # Cache busy slots per date to avoid redundant API calls
+        busy_cache: dict[date, list] = {}
+        available_slots: list[SalesSlot] = []
+
+        for slot in all_working_slots:
+            # Skip slots we've already booked internally
+            if slot.id in booked_ids:
+                continue
+
+            # Fetch busy slots for this date (cached per date)
+            if slot.date not in busy_cache:
+                try:
+                    slot_dt = datetime.combine(slot.date, time(0, 0))
+                    busy_cache[slot.date] = calendar_connector.get_busy_slots(
+                        telegram_id=rep_telegram_id,
+                        date=slot_dt,
+                        timezone=self._config.get("timezone", "Asia/Makassar"),
+                    )
+                except Exception as e:
+                    print(f"Warning: Calendar check failed for {slot.date}: {e}")
+                    busy_cache[slot.date] = []  # Fail-open: treat as no busy slots
+
+            busy_slots = busy_cache[slot.date]
+
+            # Check if slot overlaps with any busy period
+            slot_start_dt = datetime.combine(slot.date, slot.start_time)
+            slot_end_dt = datetime.combine(slot.date, slot.end_time)
+            is_busy = False
+            for busy_start, busy_end in busy_slots:
+                # Make naive datetimes for comparison if busy times are aware
+                bs = busy_start.replace(tzinfo=None) if busy_start.tzinfo else busy_start
+                be = busy_end.replace(tzinfo=None) if busy_end.tzinfo else busy_end
+                if slot_start_dt < be and slot_end_dt > bs:
+                    is_busy = True
+                    break
+
+            if not is_busy:
+                available_slots.append(slot)
+
+        available_slots.sort(key=lambda s: (s.date, s.start_time))
+        return available_slots
+
     def book_slot(self, slot_id: str, prospect_id: str) -> SchedulingResult:
         """
         Book a slot for a prospect.

@@ -51,7 +51,7 @@ load_dotenv()
 TOKENS_DIR = Path.home() / ".sales_registry" / "calendar_tokens"
 
 # Google OAuth configuration
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 REDIRECT_URI = "urn:ietf:wg:oauth:2.0:oob"  # Manual code entry
 
 class CalendarConnector:
@@ -296,6 +296,79 @@ class CalendarConnector:
             token_path.unlink()
             return True
         return False
+
+    def create_event(
+        self,
+        telegram_id: int,
+        summary: str,
+        start: str,
+        end: str,
+        description: str = "",
+        location: str = "",
+        attendees: list[str] | None = None,
+        timezone: str = "Asia/Makassar",
+        calendar_id: str = "primary",
+    ) -> dict | None:
+        """
+        Create a Google Calendar event.
+
+        Args:
+            telegram_id: Telegram ID of the rep whose calendar to use.
+            summary: Event title.
+            start: Start time in ISO 8601 format (e.g., "2026-02-10T14:00:00").
+            end: End time in ISO 8601 format.
+            description: Event description.
+            location: Event location (e.g., Zoom URL).
+            attendees: List of attendee email addresses.
+            timezone: Timezone for the event.
+            calendar_id: Calendar ID to create event in.
+
+        Returns:
+            Created event data dict, or None if creation fails.
+        """
+        creds = self._load_credentials(telegram_id)
+        if not creds:
+            return None
+
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("calendar", "v3", credentials=creds)
+
+            event_body: dict = {
+                "summary": summary,
+                "description": description,
+                "location": location,
+                "start": {
+                    "dateTime": start,
+                    "timeZone": timezone,
+                },
+                "end": {
+                    "dateTime": end,
+                    "timeZone": timezone,
+                },
+                "reminders": {
+                    "useDefault": False,
+                    "overrides": [
+                        {"method": "popup", "minutes": 30},
+                    ],
+                },
+            }
+
+            if attendees:
+                event_body["attendees"] = [{"email": email} for email in attendees]
+
+            result = (
+                service.events()
+                .insert(calendarId=calendar_id, body=event_body, sendUpdates="all")
+                .execute()
+            )
+
+            return result
+
+        except Exception as e:
+            print(f"Failed to create Google Calendar event: {e}")
+            return None
 
     def get_busy_slots(
         self,

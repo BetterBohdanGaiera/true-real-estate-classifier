@@ -621,10 +621,19 @@ class SchedulingTool:
         bali_today = datetime.now(BALI_TZ).date()
         from_date = preferred_date or bali_today
 
-        available_slots = self.calendar.get_available_slots(
-            from_date=from_date,
-            days=days
-        )
+        # Use real Google Calendar data when available, fall back to mock slots
+        if self.calendar_connector and self.rep_telegram_id:
+            available_slots = self.calendar.get_available_slots_from_calendar(
+                calendar_connector=self.calendar_connector,
+                rep_telegram_id=self.rep_telegram_id,
+                from_date=from_date,
+                days=days,
+            )
+        else:
+            available_slots = self.calendar.get_available_slots(
+                from_date=from_date,
+                days=days
+            )
 
         # Filter out past slots for today using Bali timezone
         now_bali = datetime.now(BALI_TZ)
@@ -809,25 +818,28 @@ class SchedulingTool:
 
         # Try to create Google Calendar event
         calendar_created = False
-        if self.calendar_connector and zoom_url:
+        if self.calendar_connector:
             try:
                 # Format times for Google Calendar (ISO 8601)
                 start_iso = meeting_start.strftime("%Y-%m-%dT%H:%M:%S")
                 end_iso = meeting_end.strftime("%Y-%m-%dT%H:%M:%S")
 
-                description = (
-                    f"Консультация по недвижимости на Бали\n\n"
-                    f"Клиент: {prospect.name}\n"
-                    f"Email: {client_email}\n\n"
-                    f"Zoom: {zoom_url}"
-                )
+                description_parts = [
+                    f"Консультация по недвижимости на Бали\n",
+                    f"Клиент: {prospect.name}",
+                    f"Email: {client_email}",
+                ]
+                if zoom_url:
+                    description_parts.append(f"\nZoom: {zoom_url}")
+                description = "\n".join(description_parts)
 
                 self.calendar_connector.create_event(
+                    telegram_id=self.rep_telegram_id,
                     summary=f"Консультация: {prospect.name}",
                     start=start_iso,
                     end=end_iso,
                     description=description,
-                    location=zoom_url,
+                    location=zoom_url or "",
                     attendees=[client_email],
                     timezone="Asia/Makassar"
                 )
@@ -862,8 +874,15 @@ class SchedulingTool:
                 f"Ссылка на Zoom:\n{zoom_url}\n\n"
                 f"Сохраните ссылку - приглашение на {client_email} будет отправлено отдельно."
             )
+        elif not zoom_url and calendar_created:
+            # Calendar event created but no Zoom
+            confirmation_message = (
+                f"Отлично! Встреча назначена на {formatted_date} в {time_display}.\n\n"
+                f"Приглашение отправлено на {client_email}.\n"
+                f"Ссылка на Zoom будет добавлена отдельно."
+            )
         else:
-            # No Zoom integration - fallback message
+            # No Zoom and no calendar - fallback message
             confirmation_message = (
                 f"Отлично! Встреча назначена на {formatted_date} в {time_display}.\n\n"
                 f"Ссылка на Zoom будет отправлена на {client_email} за день до встречи.\n\n"
@@ -898,6 +917,102 @@ class SchedulingTool:
                 return slot
 
         return None
+
+    def confirm_time_slot(
+        self,
+        target_date: date,
+        target_time: time,
+        client_timezone: Optional[str] = None,
+    ) -> str:
+        """
+        Check if a specific time slot is available and return confirmation or alternatives.
+
+        Used when a client has already mentioned a specific time preference.
+        Returns a natural language response confirming availability or suggesting alternatives.
+
+        Args:
+            target_date: The date the client wants
+            target_time: The time the client wants
+            client_timezone: Optional client timezone for dual-timezone display
+
+        Returns:
+            Formatted string confirming the time or suggesting alternatives.
+        """
+        # Get available slots using real calendar when possible
+        if self.calendar_connector and self.rep_telegram_id:
+            day_slots = self.calendar.get_available_slots_from_calendar(
+                calendar_connector=self.calendar_connector,
+                rep_telegram_id=self.rep_telegram_id,
+                from_date=target_date,
+                days=1,
+            )
+        else:
+            day_slots = self.calendar.get_available_slots(
+                from_date=target_date,
+                days=1
+            )
+
+        # Check if the requested time is among available slots
+        slot = None
+        for s in day_slots:
+            if s.date == target_date and s.start_time == target_time:
+                slot = s
+                break
+
+        if slot:
+            # Slot is available - format confirmation
+            formatted_date = self._format_date_russian(target_date)
+            time_str = target_time.strftime("%H:%M")
+
+            if client_timezone:
+                meeting_dt = datetime.combine(target_date, target_time, tzinfo=BALI_TZ)
+                dual_time = self._format_dual_timezone(meeting_dt, client_timezone)
+                return f"{formatted_date} в {dual_time} - свободно!"
+            else:
+                return f"{formatted_date} в {time_str} (Бали UTC+8) - свободно!"
+
+        # Slot not available - use already-fetched day_slots as alternatives
+        available_slots = day_slots
+
+        if not available_slots:
+            # No slots today, check next few days
+            if self.calendar_connector and self.rep_telegram_id:
+                available_slots = self.calendar.get_available_slots_from_calendar(
+                    calendar_connector=self.calendar_connector,
+                    rep_telegram_id=self.rep_telegram_id,
+                    from_date=target_date,
+                    days=3,
+                )
+            else:
+                available_slots = self.calendar.get_available_slots(
+                    from_date=target_date,
+                    days=3
+                )
+
+        if not available_slots:
+            return "К сожалению, нет свободных слотов в ближайшие дни."
+
+        # Format up to 3 nearest alternatives
+        time_str = target_time.strftime("%H:%M")
+        alternatives = available_slots[:3]
+
+        alt_strs = []
+        for alt_slot in alternatives:
+            alt_date = self._format_date_russian(alt_slot.date)
+            alt_time = alt_slot.start_time.strftime("%H:%M")
+            if client_timezone:
+                alt_dt = datetime.combine(alt_slot.date, alt_slot.start_time, tzinfo=BALI_TZ)
+                alt_dual = self._format_dual_timezone(alt_dt, client_timezone)
+                alt_strs.append(f"{alt_date} в {alt_dual}")
+            else:
+                alt_strs.append(f"{alt_date} в {alt_time}")
+
+        alternatives_text = "\n- ".join(alt_strs)
+        formatted_date = self._format_date_russian(target_date)
+        return (
+            f"К сожалению, {formatted_date} в {time_str} занято.\n\n"
+            f"Ближайшие свободные слоты:\n- {alternatives_text}"
+        )
 
 # Simple test
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ from telethon import events
 # Package imports
 from telegram_sales_bot.core.client import get_client, get_client_for_rep
 from telegram_sales_bot.core.service import TelegramService, is_private_chat
-from telegram_sales_bot.core.agent import TelegramAgent
+from telegram_sales_bot.core.cli_agent import CLITelegramAgent
 from telegram_sales_bot.knowledge.loader import KnowledgeLoader
 from telegram_sales_bot.prospects.manager import ProspectManager
 from telegram_sales_bot.core.models import AgentConfig, ProspectStatus, ScheduledActionType
@@ -170,7 +170,7 @@ class TelegramDaemon:
         available_slots = len(self.sales_calendar.get_available_slots())
         console.print(f"  [green]✓[/green] Sales calendar initialized ({available_slots} slots available)")
 
-        # Initialize Calendar Connector for per-rep mode (optional)
+        # Initialize Calendar Connector (optional)
         calendar_connector = None
         if self.rep_telegram_id:
             from telegram_sales_bot.registry.rep_manager import get_by_telegram_id
@@ -184,6 +184,17 @@ class TelegramDaemon:
                     calendar_connector = None
             elif rep:
                 console.print(f"  [yellow]⚠[/yellow] Calendar not connected for {rep.name} (using mock slots)")
+        else:
+            try:
+                calendar_connector = CalendarConnector()
+                if calendar_connector.enabled:
+                    console.print(f"  [green]✓[/green] Google Calendar integration enabled")
+                else:
+                    console.print(f"  [yellow]⚠[/yellow] Google Calendar credentials not configured (using mock slots)")
+                    calendar_connector = None
+            except Exception:
+                console.print(f"  [yellow]⚠[/yellow] Google Calendar module not available (using mock slots)")
+                calendar_connector = None
 
         # Initialize Zoom booking service (optional)
         zoom_service = None
@@ -215,15 +226,21 @@ class TelegramDaemon:
         )
         console.print(f"  [green]✓[/green] Scheduler service initialized")
 
-        # Initialize Claude agent with ALL skills
-        self.agent = TelegramAgent(
+        # Initialize Claude CLI agent with ALL skills
+        self.agent = CLITelegramAgent(
             tone_of_voice_path=TONE_OF_VOICE_DIR,
             how_to_communicate_path=HOW_TO_COMMUNICATE_DIR,
             knowledge_base_path=KNOWLEDGE_BASE_DIR,
             config=self.config,
             agent_name=self.config.agent_name
         )
-        console.print(f"  [green]✓[/green] Claude agent ready (with tone-of-voice + how-to-communicate + knowledge base)")
+
+        # Restore sessions from prospect data
+        for prospect in prospects:
+            if hasattr(prospect, 'session_id') and prospect.session_id:
+                self.agent.sessions[str(prospect.telegram_id)] = prospect.session_id
+
+        console.print(f"  [green]✓[/green] Claude CLI agent ready (model: {self.config.cli_model})")
 
         # Initialize voice transcriber (optional - requires ELEVENLABS_API_KEY)
         try:
@@ -587,6 +604,18 @@ class TelegramDaemon:
                     last_message_text
                 )
 
+        # Persist CLI session ID for conversation continuity
+        self._persist_session(prospect)
+
+    def _persist_session(self, prospect) -> None:
+        """Save the CLI session ID from the agent to the prospect data."""
+        prospect_id = str(prospect.telegram_id)
+        session_id = self.agent.sessions.get(prospect_id)
+        if session_id:
+            self.prospect_manager.update_prospect_field(
+                prospect.telegram_id, "session_id", session_id
+            )
+
     async def _handle_schedule_followup(self, prospect, action, context):
         """Handle schedule_followup action."""
         try:
@@ -898,6 +927,11 @@ class TelegramDaemon:
 
                 # Generate initial message
                 action = await self.agent.generate_initial_message(prospect)
+                self._persist_session(prospect)
+
+                if action.action == "escalate":
+                    console.print(f"[red]CLI agent error for {prospect.name}: {action.reason}[/red]")
+                    continue
 
                 if action.action == "reply" and action.message:
                     # Send message
@@ -947,6 +981,7 @@ class TelegramDaemon:
 
                 context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
                 action = await self.agent.generate_follow_up(prospect, context)
+                self._persist_session(prospect)
 
                 if action.action == "reply" and action.message:
                     result = await self.service.send_message(
@@ -1023,6 +1058,7 @@ class TelegramDaemon:
                 context,
                 follow_up_intent=follow_up_intent
             )
+            self._persist_session(prospect)
 
             if response.action == "reply" and response.message:
                 message = response.message
