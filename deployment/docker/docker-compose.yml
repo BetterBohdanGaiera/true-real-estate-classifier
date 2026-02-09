@@ -2,7 +2,7 @@
 #
 # PREREQUISITES:
 #   1. Create .env file in project root with required variables:
-#      - ANTHROPIC_API_KEY=your_key
+#      - CLAUDE_CODE_OAUTH_TOKEN=your_oauth_token (from Claude Pro/Max subscription)
 #      - POSTGRES_PASSWORD=your_password (for database)
 #   2. Ensure Telegram credentials exist in ~/.telegram_dl/
 #   3. (Optional) Configure Zoom credentials in ~/.zoom_credentials/
@@ -71,22 +71,26 @@ services:
       DATABASE_URL: postgresql://sales_agent:${POSTGRES_PASSWORD:-changeme}@postgres:5432/sales_agent
       # Timezone for scheduling (Bali/Indonesia)
       TZ: Asia/Makassar
+      # Claude Code CLI authentication (OAuth token from Claude Pro/Max subscription)
+      # Loaded via env_file from .env - do NOT override here (host env would clobber)
+      # Unset ANTHROPIC_API_KEY so Claude CLI uses OAuth token instead of API credits
+      ANTHROPIC_API_KEY: ""
       # Per-rep mode (optional)
       # Set to Telegram ID of registered sales rep to run daemon for specific rep
       # Leave empty or unset to use default mode (user.session)
       REP_TELEGRAM_ID: ${REP_TELEGRAM_ID:-}
     env_file:
       # Load additional environment variables from project root .env
-      # Includes: ANTHROPIC_API_KEY, LOG_LEVEL, etc.
+      # Includes: CLAUDE_CODE_OAUTH_TOKEN, LOG_LEVEL, etc.
       - ../../.env
     volumes:
       # Mount Telegram credentials (required for Telethon authentication)
       # Note: Needs read-write access because Telethon updates the session file
-      - ${HOME}/.telegram_dl:/root/.telegram_dl:rw
+      - ${HOME}/.telegram_dl:/home/agent/.telegram_dl:rw
       # Mount Zoom credentials (optional, for Zoom meeting scheduling)
-      - ${HOME}/.zoom_credentials:/root/.zoom_credentials:ro
+      - ${HOME}/.zoom_credentials:/home/agent/.zoom_credentials:ro
       # Mount sales registry for per-rep calendar tokens (optional)
-      - ${HOME}/.sales_registry:/root/.sales_registry:ro
+      - ${HOME}/.sales_registry:/home/agent/.sales_registry:ro
       # Mount Google Calendar credentials (optional, for calendar integration)
       - ../../.claude/skills/google-calendar/accounts:/app/.claude/skills/google-calendar/accounts:ro
       # Mount config directory (for prospects.json and agent_config.json) - needs read-write
