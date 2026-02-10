@@ -1,8 +1,10 @@
 """
 Conversation pause detection.
 
-This module detects gaps in conversation and suggests appropriate
-greetings/acknowledgments for resuming conversation after long pauses.
+This module detects gaps in conversation and provides metadata about
+conversation pauses (duration, pause type, who sent last message).
+The AI agent is responsible for generating all conversational text,
+including any greetings or acknowledgments of time gaps.
 """
 from datetime import datetime, timezone, timezone, timedelta
 from dataclasses import dataclass
@@ -43,10 +45,11 @@ def detect_pause(
     now: Optional[datetime] = None
 ) -> ConversationGap:
     """
-    Detect conversation pause and suggest appropriate greeting.
+    Detect conversation pause and return gap metadata.
 
     Analyzes the gap between now and the last activity in the conversation,
-    considering who sent the last message.
+    considering who sent the last message. Returns metadata only; the AI
+    agent is responsible for generating any greeting or acknowledgment text.
 
     Args:
         last_contact: When agent last sent a message to prospect
@@ -54,7 +57,7 @@ def detect_pause(
         now: Current time (defaults to datetime.now())
 
     Returns:
-        ConversationGap with pause type and suggested greeting
+        ConversationGap with pause type and duration metadata
     """
     if now is None:
         now = datetime.now()
@@ -99,33 +102,22 @@ def detect_pause(
     # Determine pause type based on duration
     if hours < PAUSE_THRESHOLDS[PauseType.NONE]:
         pause_type = PauseType.NONE
-        greeting = None
     elif hours < PAUSE_THRESHOLDS[PauseType.SHORT]:
         pause_type = PauseType.SHORT
-        greeting = None  # Normal conversation flow, no special greeting
     elif hours < PAUSE_THRESHOLDS[PauseType.MEDIUM]:
         pause_type = PauseType.MEDIUM
-        greeting = None  # Same day, no special greeting needed
     elif hours < PAUSE_THRESHOLDS[PauseType.LONG]:
         pause_type = PauseType.LONG
-        if last_from == "agent":
-            # We wrote last, they're just now responding - no greeting needed
-            greeting = None
-        else:
-            # They wrote last, we're getting back to them after 1-3 days
-            greeting = "Dobryy den'! Prodolzhaem nash razgovor?"
     elif hours < PAUSE_THRESHOLDS[PauseType.VERY_LONG]:
         pause_type = PauseType.VERY_LONG
-        greeting = "Rad snova vas slyshat'! My obshchalis' o nedvizhimosti na Bali."
     else:
         pause_type = PauseType.DORMANT
-        greeting = "Zdravstvuyte! Davno ne obshchalis'. Vsyo yeshchyo aktualen vopros s nedvizhimostyu na Bali?"
 
     return ConversationGap(
         pause_type=pause_type,
         hours=hours,
         last_message_from=last_from,
-        suggested_greeting=greeting
+        suggested_greeting=None
     )
 
 class PauseDetector:
@@ -140,26 +132,27 @@ class PauseDetector:
         """
         Check if we should add a special greeting for this gap.
 
-        Returns True if the gap is significant enough to warrant
-        acknowledging the time that has passed.
+        Always returns False because the AI agent is responsible for
+        generating all conversational text, including greetings.
+        Use get_pause_context_for_agent() to provide the agent with
+        pause metadata so it can decide how to acknowledge the gap.
 
         Args:
             gap: The detected conversation gap
 
         Returns:
-            True if a greeting should be added to the response
+            Always False - greeting text generation is delegated to the AI agent
         """
-        return (
-            gap.pause_type in [PauseType.LONG, PauseType.VERY_LONG, PauseType.DORMANT]
-            and gap.suggested_greeting is not None
-        )
+        return False
 
     def get_pause_context_for_agent(self, gap: ConversationGap) -> Optional[str]:
         """
         Generate context string for the agent about the conversation gap.
 
-        This context can be included in the agent prompt to help it
-        craft an appropriate response.
+        Provides pause metadata (duration, type, last sender) so the AI agent
+        can decide how to acknowledge the time gap in its response. Does NOT
+        include any suggested greeting text -- the agent generates all
+        conversational content.
 
         Args:
             gap: The detected conversation gap
@@ -174,14 +167,8 @@ class PauseDetector:
             f"KONTEKST PAUZY: Proshlo {gap.hours:.0f} chasov s poslednego soobshcheniya.",
             f"Tip pauzy: {gap.pause_type.value}",
             f"Posledneye soobshcheniye ot: {'klienta' if gap.last_message_from == 'prospect' else 'agenta' if gap.last_message_from == 'agent' else 'nikogo'}",
+            "Consider acknowledging the time gap in your response.",
         ]
-
-        if gap.suggested_greeting:
-            context_parts.append(f'Predlagaemoye privetstviye: "{gap.suggested_greeting}"')
-            context_parts.append(
-                "Uchityvay etot kontekst v svoyom otvete. Yesli pauza byla dolgoy, "
-                "mozhesh' myagko napomnit' o chom shla rech'."
-            )
 
         return "\n".join(context_parts)
 

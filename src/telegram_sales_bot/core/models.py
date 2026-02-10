@@ -103,6 +103,7 @@ class Prospect(BaseModel):
     notes: str = ""  # Additional notes
     email: Optional[str] = None  # Client email for meeting invite
     human_active: bool = False  # True when human operator has taken over
+    session_id: Optional[str] = None  # Claude Code CLI session ID for conversation continuity
 
     # Temporal awareness fields
     estimated_timezone: Optional[str] = None  # e.g., "Europe/Moscow", "Asia/Dubai"
@@ -265,7 +266,7 @@ class SchedulingResult(BaseModel):
 
 class AgentAction(BaseModel):
     """Action to take after processing a message."""
-    action: Literal["reply", "wait", "schedule", "check_availability", "schedule_followup"]
+    action: Literal["reply", "wait", "schedule", "check_availability", "schedule_followup", "escalate"]
     message: Optional[str] = None
     reason: Optional[str] = None  # Why this action was chosen
     scheduling_data: Optional[dict] = None  # For scheduling actions: {"slot_id": "...", "topic": "..."}
@@ -303,13 +304,17 @@ class AgentConfig(BaseModel):
     include_knowledge_base: bool = True
     max_knowledge_tokens: int = 4000  # Token limit for KB context
 
-    escalation_keywords: list[str] = Field(default_factory=list)  # Disabled - too many false positives
-    escalation_notify: Optional[str] = None  # Telegram ID to notify (disabled)
+    escalation_notify: Optional[str] = None  # Telegram ID to notify on escalation
     typing_simulation: bool = True  # Simulate typing indicator
     auto_follow_up_hours: int = 24  # Hours before follow-up if no response
 
     # Human-like polish configuration
     human_polish: Optional[HumanPolishConfig] = None
+
+    # CLI agent configuration
+    cli_model: str = "claude-opus-4-6"
+    cli_timeout: int = 60
+    cli_max_budget_usd: Optional[float] = None
 
 class FollowUpPollingConfig(BaseModel):
     """Configuration for follow-up polling daemon."""

@@ -1,6 +1,6 @@
 """
 Knowledge base loader for Telegram agent.
-Detects topics from user messages and selectively loads relevant context.
+Loads knowledge base context for the AI agent, which decides topic relevance on its own.
 """
 import logging
 from pathlib import Path
@@ -42,61 +42,9 @@ TOPIC_NAMES = {
     "11": "Шаблоны для клиентов",
 }
 
-# Priority order for topics (most commonly needed first)
-TOPIC_PRIORITY = ["01", "02", "03", "04", "05", "06", "09", "10", "11", "07", "08"]
 
 class KnowledgeLoader:
     """Loads and manages knowledge base context for agent responses."""
-
-    # Topic keyword mapping (Russian keywords, lowercase)
-    TOPIC_KEYWORDS = {
-        "01": [
-            "геогра", "район", "локация", "чангу", "убуд", "семиньяк",
-            "букит", "санур", "нуса", "улувату", "перереран", "керобокан",
-            "бедугул", "амед", "ловина", "канди", "денпасар", "кута",
-            "легиан", "джимбаран", "танджунг", "печенг", "region", "location"
-        ],
-        "02": [
-            "legal", "leasehold", "freehold", "закон", "право", "собственность",
-            "владение", "оформлен", "pt pma", "pma", "нотариус", "контракт",
-            "договор", "регистрац", "юридич", "наследов", "продлен"
-        ],
-        "03": [
-            "налог", "ндфл", "tax", "налогообложен", "bali tax", "rental tax",
-            "ставка", "резидент", "нерезидент", "комисси", "сбор"
-        ],
-        "04": [
-            "доход", "roi", "инвестиц", "окупаем", "прибыл", "финанс", "модел",
-            "доходность", "рентабельн", "заполняем", "выручк", "чистый доход",
-            "промоушен", "промо период", "расчет", "калькуляц"
-        ],
-        "05": [
-            "преимуществ", "usp", "почему", "продаж", "конкурент", "возражен",
-            "true real estate", "комиссия агент", "estate market", "ai аналитик",
-            "отдел заботы", "напрямую дешевле", "зачем агентство"
-        ],
-        "06": [
-            "рынок", "тренд", "цен", "спрос", "предложен", "market", "аналитик",
-            "прогноз", "статистик", "данные", "динамик"
-        ],
-        "07": [
-            "вопрос", "непонятн", "question", "уточнен", "неясн"
-        ],
-        "08": [
-            "улучшен", "предложен", "improvement", "добавить", "дополн"
-        ],
-        "09": [
-            "глоссар", "термин", "что значит", "glossary", "определен",
-            "расшифров", "аббревиатур", "что такое"
-        ],
-        "10": [
-            "риск", "опасн", "проблем", "risk", "недостат", "минус",
-            "сложност", "подводн", "камн"
-        ],
-        "11": [
-            "шаблон", "template", "пример", "скрипт", "образец", "форма"
-        ],
-    }
 
     def __init__(self, knowledge_base_path: Path):
         """
@@ -114,30 +62,6 @@ class KnowledgeLoader:
         if self._encoding is None:
             self._encoding = tiktoken.get_encoding("cl100k_base")
         return self._encoding
-
-    def detect_topics(self, message: str) -> list[str]:
-        """
-        Detect relevant topic IDs from a message.
-
-        Args:
-            message: User message to analyze
-
-        Returns:
-            List of topic IDs like ["01", "04"] based on keyword matches,
-            sorted by priority.
-        """
-        message_lower = message.lower()
-        detected = set()
-
-        for topic_id, keywords in self.TOPIC_KEYWORDS.items():
-            for keyword in keywords:
-                if keyword in message_lower:
-                    detected.add(topic_id)
-                    break  # One match is enough per topic
-
-        # Sort by priority order
-        result = [t for t in TOPIC_PRIORITY if t in detected]
-        return result
 
     def load_master_cheatsheet(self) -> str:
         """
@@ -188,18 +112,36 @@ class KnowledgeLoader:
             return 0
         return len(self.encoding.encode(text))
 
+    def get_available_topics_summary(self) -> str:
+        """
+        Return a formatted string listing all available knowledge base topics.
+
+        This is intended for injection into the agent's system prompt so the AI
+        knows what topic files exist and can request them as needed.
+
+        Returns:
+            Formatted multi-line string listing all topics by ID and name.
+        """
+        lines = ["Доступные разделы базы знаний:"]
+        for topic_id in sorted(TOPIC_NAMES.keys()):
+            if topic_id == "00":
+                continue  # Master cheatsheet is always loaded separately
+            lines.append(f"- {topic_id}: {TOPIC_NAMES[topic_id]}")
+        return "\n".join(lines)
+
     def get_relevant_context(self, message: str, max_tokens: int = 4000) -> str:
         """
         Get relevant knowledge context for a message.
 
         Strategy:
-        1. Always include master cheatsheet (~500-700 tokens)
-        2. Detect topics from message
-        3. Load topic files in order of relevance until token limit
-        4. Return formatted string ready for prompt injection
+        1. Always include master cheatsheet
+        2. Append a summary of available topics so the AI agent knows
+           what knowledge sections exist
+        3. The AI agent decides which topics are relevant (no keyword matching)
 
         Args:
-            message: User message to get context for
+            message: User message to get context for (kept for backward
+                     compatibility but no longer used for keyword detection)
             max_tokens: Maximum tokens to include (default 4000)
 
         Returns:
@@ -211,7 +153,7 @@ class KnowledgeLoader:
             )
             return ""
 
-        sections = []
+        sections: list[str] = []
         total_tokens = 0
 
         # 1. Always include master cheatsheet
@@ -229,32 +171,14 @@ class KnowledgeLoader:
                 sections.append(f"### {TOPIC_NAMES['00']} (сокращено)\n\n{truncated}")
                 return self._format_context(sections)
 
-        # 2. Detect topics from message
-        detected_topics = self.detect_topics(message)
+        # 2. Append available topics summary so the AI knows what exists
+        topics_summary = self.get_available_topics_summary()
+        summary_section = f"### Справочник разделов\n\n{topics_summary}"
+        summary_tokens = self.count_tokens(summary_section)
 
-        # 3. Load topic files until token limit
-        for topic_id in detected_topics:
-            topic_content = self.load_topic(topic_id)
-            if not topic_content:
-                continue
-
-            topic_section = f"### {TOPIC_NAMES[topic_id]}\n\n{topic_content}"
-            topic_tokens = self.count_tokens(topic_section)
-
-            if total_tokens + topic_tokens <= max_tokens:
-                sections.append(topic_section)
-                total_tokens += topic_tokens
-            else:
-                # Check if we can fit a truncated version
-                remaining_tokens = max_tokens - total_tokens
-                if remaining_tokens > 200:  # Only add if meaningful space left
-                    truncated = self._truncate_to_tokens(
-                        topic_content, remaining_tokens - 100
-                    )
-                    sections.append(
-                        f"### {TOPIC_NAMES[topic_id]} (сокращено)\n\n{truncated}"
-                    )
-                break  # No more space
+        if total_tokens + summary_tokens <= max_tokens:
+            sections.append(summary_section)
+            total_tokens += summary_tokens
 
         return self._format_context(sections)
 
@@ -310,9 +234,11 @@ class KnowledgeLoader:
         content = "\n\n---\n\n".join(sections)
         return header + content
 
+
 # Simple test
 if __name__ == "__main__":
-    
+    import sys
+
     # Find project root
     project_root = Path(__file__).parent.parent.parent.parent.parent
     kb_path = project_root / "knowledge_base_final"
@@ -323,25 +249,16 @@ if __name__ == "__main__":
 
     loader = KnowledgeLoader(kb_path)
 
-    # Test topic detection
-    test_messages = [
-        "Какая доходность у вилл в Чангу?",
-        "Расскажите про налоги на Бали",
-        "Что такое leasehold?",
-        "Какие риски есть при покупке?",
-        "Просто интересуюсь недвижимостью",
-    ]
-
-    print("=== Topic Detection Test ===\n")
-    for msg in test_messages:
-        topics = loader.detect_topics(msg)
-        print(f"Message: {msg}")
-        print(f"Topics: {topics}")
-        print()
+    # Test available topics summary
+    print("=== Available Topics Summary ===\n")
+    print(loader.get_available_topics_summary())
+    print()
 
     # Test context loading
     print("\n=== Context Loading Test ===\n")
-    context = loader.get_relevant_context("Какая доходность у вилл в Чангу?", max_tokens=2000)
+    context = loader.get_relevant_context(
+        "Какая доходность у вилл в Чангу?", max_tokens=2000
+    )
     tokens = loader.count_tokens(context)
     print(f"Token count: {tokens}")
     print(f"Context length: {len(context)} chars")

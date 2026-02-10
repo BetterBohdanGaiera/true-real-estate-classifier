@@ -209,13 +209,15 @@ class TelegramDaemon:
             console.print(f"  [yellow]⚠[/yellow] Zoom module not available (mock mode)")
 
         # Initialize scheduling tool with optional calendar connector and Zoom service
+        # Use rep_telegram_id if in per-rep mode, otherwise use bot's own ID for calendar ops
+        effective_rep_id = self.rep_telegram_id or self.bot_user_id
         self.scheduling_tool = SchedulingTool(
             self.sales_calendar,
             zoom_service=zoom_service,
             calendar_connector=calendar_connector,
-            rep_telegram_id=self.rep_telegram_id
+            rep_telegram_id=effective_rep_id
         )
-        console.print(f"  [green]✓[/green] Scheduling tool ready")
+        console.print(f"  [green]✓[/green] Scheduling tool ready (calendar rep_id={effective_rep_id})")
 
         # Initialize scheduled action manager (imports are module-level functions)
         console.print(f"  [green]✓[/green] Scheduled action manager ready")
@@ -429,11 +431,65 @@ class TelegramDaemon:
                 client_tz = prospect.estimated_timezone
                 console.print(f"[dim]Using stored timezone: {client_tz}[/dim]")
 
-            # Get available slots with optional timezone for dual display
-            availability_text = self.scheduling_tool.get_available_times(
-                days=7,
-                client_timezone=client_tz
-            )
+            # Check if agent provided a specific preferred time (user already named a time)
+            sched_data = action.scheduling_data or {}
+            preferred_time_str = sched_data.get("preferred_time")
+            preferred_date_str = sched_data.get("preferred_date")
+            agent_client_tz = sched_data.get("client_timezone")
+
+            # Override detected timezone with agent-provided one if available
+            if agent_client_tz:
+                client_tz = agent_client_tz
+
+            if preferred_time_str and preferred_date_str:
+                # User provided a SPECIFIC time - use confirm_time_slot instead of full list
+                try:
+                    from datetime import time as dt_time, date as dt_date
+                    from zoneinfo import ZoneInfo
+
+                    # Parse the preferred time and date
+                    h, m = map(int, preferred_time_str.split(":"))
+                    preferred_time = dt_time(h, m)
+                    preferred_date = dt_date.fromisoformat(preferred_date_str)
+
+                    # Convert from client timezone to Bali timezone if needed
+                    if client_tz:
+                        from datetime import datetime as dt_datetime
+                        client_dt = dt_datetime.combine(
+                            preferred_date, preferred_time,
+                            tzinfo=ZoneInfo(client_tz)
+                        )
+                        bali_dt = client_dt.astimezone(ZoneInfo("Asia/Makassar"))
+                        target_date = bali_dt.date()
+                        target_time = bali_dt.time().replace(second=0, microsecond=0)
+                    else:
+                        # No client timezone - assume Bali time
+                        target_date = preferred_date
+                        target_time = preferred_time
+
+                    console.print(
+                        f"[blue]Confirming specific time: {preferred_time_str} "
+                        f"({preferred_date_str}) client TZ={client_tz} -> "
+                        f"Bali {target_date} {target_time}[/blue]"
+                    )
+
+                    availability_text = self.scheduling_tool.confirm_time_slot(
+                        target_date=target_date,
+                        target_time=target_time,
+                        client_timezone=client_tz
+                    )
+                except (ValueError, KeyError) as e:
+                    console.print(f"[yellow]Failed to parse preferred time: {e}, falling back to full list[/yellow]")
+                    availability_text = self.scheduling_tool.get_available_times(
+                        days=7,
+                        client_timezone=client_tz
+                    )
+            else:
+                # No specific time - show all available slots
+                availability_text = self.scheduling_tool.get_available_times(
+                    days=7,
+                    client_timezone=client_tz
+                )
 
             # Send availability to user
             result = await self.service.send_message(
@@ -647,51 +703,14 @@ class TelegramDaemon:
             confirmation = action.message
 
             # SAFETY: Check for leaked reasoning in confirmation
-            if confirmation:
-                reasoning_patterns = ["Клиент ", "Это запрос", "schedule_followup", "нужно использовать", "follow-up" if len(confirmation) > 80 else ""]
-                if any(p and p in confirmation for p in reasoning_patterns):
-                    console.print(f"[yellow]Detected leaked reasoning in confirmation, using fallback[/yellow]")
-                    confirmation = None
+            # If the confirmation is suspiciously long (>120 chars) for what should be
+            # a 1-sentence acknowledgment, it likely contains leaked reasoning
+            if confirmation and len(confirmation) > 120:
+                console.print(f"[yellow]Confirmation too long ({len(confirmation)} chars), using fallback[/yellow]")
+                confirmation = None
 
             if not confirmation:
-                # Calculate human-friendly time description
-                import pytz
-                bali_tz = pytz.timezone("Asia/Makassar")
-                now = datetime.now(bali_tz)
-                scheduled_local = scheduled_for.astimezone(bali_tz)
-
-                delta = scheduled_local - now
-                minutes = int(delta.total_seconds() / 60)
-
-                # Generate natural time expression
-                if minutes <= 5:
-                    time_expr = "через 5 минут"
-                elif minutes <= 10:
-                    time_expr = "минут через 10"
-                elif minutes <= 15:
-                    time_expr = "минут через 15"
-                elif minutes <= 30:
-                    time_expr = "через полчаса"
-                elif minutes <= 60:
-                    time_expr = "через час"
-                elif minutes <= 120:
-                    time_expr = "через пару часов"
-                elif scheduled_local.date() == now.date():
-                    # Same day - round to nearest half hour
-                    rounded_hour = scheduled_local.hour
-                    rounded_min = 30 if scheduled_local.minute >= 15 and scheduled_local.minute < 45 else 0
-                    if scheduled_local.minute >= 45:
-                        rounded_hour += 1
-                        rounded_min = 0
-                    time_expr = f"около {rounded_hour}:{rounded_min:02d}"
-                elif (scheduled_local.date() - now.date()).days == 1:
-                    time_expr = "завтра"
-                else:
-                    # Fallback to day of week
-                    days_ru = ["в понедельник", "во вторник", "в среду", "в четверг", "в пятницу", "в субботу", "в воскресенье"]
-                    time_expr = days_ru[scheduled_local.weekday()]
-
-                confirmation = f"Хорошо, напишу {time_expr}!"
+                confirmation = "Хорошо, напишу позже!"
 
             result = await self.service.send_message(
                 prospect.telegram_id,
@@ -1066,14 +1085,12 @@ class TelegramDaemon:
                 console.print(f"[yellow]Agent decided not to follow up with {prospect.name}: {response.reason}[/yellow]")
                 return
             elif response.action == "schedule_followup":
-                # Agent tried to recursively schedule - use the text message if safe
+                # Agent tried to recursively schedule - use the text message if reasonable
                 console.print(f"[yellow]Agent tried to reschedule - using message text instead[/yellow]")
-                reasoning_patterns = ["Клиент ", "Это запрос", "schedule", "follow-up", "нужно использ"]
-                if response.message and not any(p in response.message for p in reasoning_patterns):
+                if response.message and len(response.message) <= 200:
                     message = response.message
                 else:
-                    # Generate default follow-up message
-                    message = f"Привет! Как обещал(а), пишу. {follow_up_intent or 'Как у вас дела?'}"
+                    message = "Привет! Как дела?"
             else:
                 console.print(f"[yellow]Unexpected action from follow-up generation: {response.action}[/yellow]")
                 return
