@@ -6,14 +6,15 @@ Provides available time slots and handles bookings with JSON persistence.
 """
 import json
 import random
-from datetime import datetime, timezone, timezone, date, time, timedelta
+from datetime import datetime, timezone, date, time, timedelta
 from pathlib import Path
 from typing import Optional
 
 from telegram_sales_bot.core.models import SalesSlot, SchedulingResult
 
 # Working hours in Bali time (UTC+8)
-WORKING_HOURS = [10, 11, 14, 15, 16, 17, 18]  # Hours only
+WORKING_HOURS_START = 10  # 10:00 Bali time
+WORKING_HOURS_END = 19    # 19:00 Bali time (last slot starts at 18:30)
 SLOT_DURATION_MINUTES = 30
 DEFAULT_DAYS_AHEAD = 7
 AVAILABILITY_PROBABILITY = 0.7  # 70% chance a slot is available
@@ -144,10 +145,11 @@ class SalesCalendar:
 
         Rules:
         - Weekdays only (Monday-Friday)
-        - Hours: 10:00, 11:00, 14:00, 15:00, 16:00, 17:00, 18:00 UTC+8 (Bali time)
+        - Every 30-minute interval from 10:00 to 18:30 UTC+8 (Bali time)
+        - 18 slots per day (10:00, 10:30, 11:00, ..., 18:00, 18:30)
         - Duration: 30 minutes each
         - Random availability: 70% available, 30% pre-booked
-        - Slot ID format: "YYYYMMDD_HHMM" (e.g., "20260115_1400")
+        - Slot ID format: "YYYYMMDD_HHMM" (e.g., "20260115_1430")
 
         Args:
             days_ahead: Number of days ahead to generate slots for.
@@ -173,13 +175,21 @@ class SalesCalendar:
             if current_date in blocked_dates_set:
                 continue
 
-            for hour in WORKING_HOURS:
+            # Generate all 30-minute slots within working hours
+            current_hour = WORKING_HOURS_START
+            current_minute = 0
+            while current_hour < WORKING_HOURS_END:
                 # Create slot ID in format YYYYMMDD_HHMM
-                slot_id = f"{current_date.strftime('%Y%m%d')}_{hour:02d}00"
+                slot_id = f"{current_date.strftime('%Y%m%d')}_{current_hour:02d}{current_minute:02d}"
 
-                # Calculate end time (30 minutes after start)
-                start_time = time(hour=hour, minute=0)
-                end_time = time(hour=hour, minute=SLOT_DURATION_MINUTES)
+                # Calculate start and end times for this 30-minute slot
+                start_time = time(hour=current_hour, minute=current_minute)
+                end_minute = current_minute + SLOT_DURATION_MINUTES
+                end_hour = current_hour
+                if end_minute >= 60:
+                    end_minute -= 60
+                    end_hour += 1
+                end_time = time(hour=end_hour, minute=end_minute)
 
                 # Random availability: 70% chance available, 30% pre-booked
                 is_available = random.random() < AVAILABILITY_PROBABILITY
@@ -195,6 +205,12 @@ class SalesCalendar:
                     booked_by=booked_by
                 )
                 generated_slots.append(slot)
+
+                # Advance by 30 minutes
+                current_minute += SLOT_DURATION_MINUTES
+                if current_minute >= 60:
+                    current_minute -= 60
+                    current_hour += 1
 
         return generated_slots
 
@@ -293,10 +309,18 @@ class SalesCalendar:
             if current_date in blocked_dates_set:
                 continue
 
-            for hour in WORKING_HOURS:
-                slot_id = f"{current_date.strftime('%Y%m%d')}_{hour:02d}00"
-                start_time_val = time(hour=hour, minute=0)
-                end_time_val = time(hour=hour, minute=SLOT_DURATION_MINUTES)
+            # Generate all 30-minute slots within working hours
+            current_hour = WORKING_HOURS_START
+            current_minute = 0
+            while current_hour < WORKING_HOURS_END:
+                slot_id = f"{current_date.strftime('%Y%m%d')}_{current_hour:02d}{current_minute:02d}"
+                start_time_val = time(hour=current_hour, minute=current_minute)
+                end_minute = current_minute + SLOT_DURATION_MINUTES
+                end_hour = current_hour
+                if end_minute >= 60:
+                    end_minute -= 60
+                    end_hour += 1
+                end_time_val = time(hour=end_hour, minute=end_minute)
 
                 slot = SalesSlot(
                     id=slot_id,
@@ -308,6 +332,12 @@ class SalesCalendar:
                     booked_by=None,
                 )
                 all_working_slots.append(slot)
+
+                # Advance by 30 minutes
+                current_minute += SLOT_DURATION_MINUTES
+                if current_minute >= 60:
+                    current_minute -= 60
+                    current_hour += 1
 
         # Check for already-booked slots in our internal data
         booked_ids = {s.id for s in self._slots if not s.is_available or s.booked_by is not None}

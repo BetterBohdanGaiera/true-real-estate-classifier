@@ -77,13 +77,13 @@ RUSSIAN_MONTHS = {
 
 # Russian weekday names
 RUSSIAN_WEEKDAYS = {
-    0: "Понедельник",
-    1: "Вторник",
-    2: "Среда",
-    3: "Четверг",
-    4: "Пятница",
-    5: "Суббота",
-    6: "Воскресенье"
+    0: "понедельник",
+    1: "вторник",
+    2: "среда",
+    3: "четверг",
+    4: "пятница",
+    5: "суббота",
+    6: "воскресенье"
 }
 
 def validate_email_with_suggestions(email: str) -> tuple[bool, str, Optional[str]]:
@@ -189,9 +189,9 @@ class SchedulingTool:
         month_name = RUSSIAN_MONTHS[target_date.month]
 
         if target_date == today:
-            return f"Сегодня ({day_num} {month_name})"
+            return f"сегодня ({day_num} {month_name})"
         elif target_date == today + timedelta(days=1):
-            return f"Завтра ({day_num} {month_name})"
+            return f"завтра ({day_num} {month_name})"
         else:
             weekday_name = RUSSIAN_WEEKDAYS[target_date.weekday()]
             return f"{weekday_name} ({day_num} {month_name})"
@@ -235,14 +235,14 @@ class SchedulingTool:
         client_tz: str
     ) -> str:
         """
-        Format time in both client's timezone and Bali timezone.
+        Format time in client's timezone only.
 
         Args:
             dt: Datetime to format (assumed to be in Bali timezone if naive)
             client_tz: Client's timezone as IANA string
 
         Returns:
-            Formatted string like "14:00 вашего времени (10:00 Бали UTC+8)"
+            Formatted string like "14:00 (Варшава UTC+1)"
             or just "10:00 (Бали UTC+8)" if conversion fails.
         """
         # Ensure datetime has Bali timezone
@@ -256,7 +256,8 @@ class SchedulingTool:
 
         if client_dt is not None:
             client_time_str = client_dt.strftime("%H:%M")
-            return f"{client_time_str} вашего времени ({bali_time_str} Бали UTC+8)"
+            tz_display = self._get_timezone_display_name(client_tz)
+            return f"{client_time_str} ({tz_display})"
         else:
             # Fallback to Bali time only
             return f"{bali_time_str} (Бали UTC+8)"
@@ -290,7 +291,8 @@ class SchedulingTool:
         if client_start is not None and client_end is not None:
             client_start_str = client_start.strftime("%H:%M")
             client_end_str = client_end.strftime("%H:%M")
-            return f"{client_start_str}-{client_end_str} вашего времени ({bali_start}-{bali_end} Бали UTC+8)"
+            tz_display = self._get_timezone_display_name(client_tz)
+            return f"{client_start_str}-{client_end_str} ({tz_display})"
         else:
             # Fallback to Bali time only
             return f"{bali_start}-{bali_end} (Бали UTC+8)"
@@ -513,13 +515,13 @@ class SchedulingTool:
         Format time ranges using natural language.
 
         Follows tone-of-voice guidelines for natural time offering.
-        Shows availability in Bali timezone first, then optionally
-        in client's timezone. Ends with a natural question to guide
-        the prospect toward making a choice.
+        When client_timezone is provided, shows times ONLY in client's
+        timezone. Otherwise falls back to Bali timezone.
+        Shows ALL available days (no truncation).
 
         Args:
             ranges: List of TimeRange objects to format
-            client_timezone: Optional client timezone for dual-timezone display
+            client_timezone: Optional client timezone for client-only display
 
         Returns:
             Formatted Russian text with natural phrasing
@@ -532,11 +534,7 @@ class SchedulingTool:
             Какое время Вам удобнее - утро или вечер?"
 
         Example output (with client timezone):
-            "Свободное время на этой неделе по Бали:
-            - Завтра: с 10:00 до 12:00, с 14:00 до 16:00
-            - Понедельник: с 16:00 до 19:00
-
-            По вашему времени (Москва UTC+3) это:
+            "Свободное время на этой неделе по вашему времени (Москва UTC+3):
             - Завтра: с 5:00 до 7:00, с 9:00 до 11:00
             - Понедельник: с 11:00 до 14:00
 
@@ -552,26 +550,18 @@ class SchedulingTool:
                 ranges_by_date[r.date] = []
             ranges_by_date[r.date].append(r)
 
-        # Build output - Bali timezone section
-        lines = ["Свободное время на этой неделе по Бали:"]
+        sorted_dates = sorted(ranges_by_date.keys())
+        display_dates = sorted_dates
 
-        for slot_date in sorted(ranges_by_date.keys()):
-            date_header = self._format_date_russian(slot_date)
-            day_ranges = ranges_by_date[slot_date]
-
-            # Format ranges for this day: "с 10:00 до 12:00, с 14:00 до 16:00"
-            range_strs = [r.format_russian(include_gaps=False) for r in day_ranges]
-            ranges_text = ", ".join(range_strs)
-
-            lines.append(f"- {date_header}: {ranges_text}")
-
-        # Add client timezone section if provided
         if client_timezone:
+            # Show ONLY client timezone section
             tz_display_name = self._get_timezone_display_name(client_timezone)
-            lines.append("")
-            lines.append(f"По вашему времени ({tz_display_name}) это:")
+            lines = [
+                f"Я работаю на Бали (UTC+8), с 10:00 до 19:00 по моему времени.",
+                f"По вашему времени ({tz_display_name}) пересечения такие:"
+            ]
 
-            for slot_date in sorted(ranges_by_date.keys()):
+            for slot_date in display_dates:
                 date_header = self._format_date_russian(slot_date)
                 day_ranges = ranges_by_date[slot_date]
 
@@ -582,6 +572,19 @@ class SchedulingTool:
                     converted_strs.append(converted)
 
                 ranges_text = ", ".join(converted_strs)
+                lines.append(f"- {date_header}: {ranges_text}")
+        else:
+            # Fallback: show Bali timezone only
+            lines = ["Свободное время на этой неделе по Бали:"]
+
+            for slot_date in display_dates:
+                date_header = self._format_date_russian(slot_date)
+                day_ranges = ranges_by_date[slot_date]
+
+                # Format ranges for this day: "с 10:00 до 12:00, с 14:00 до 16:00"
+                range_strs = [r.format_russian(include_gaps=False) for r in day_ranges]
+                ranges_text = ", ".join(range_strs)
+
                 lines.append(f"- {date_header}: {ranges_text}")
 
         # Add natural closing question following tone-of-voice guidelines
@@ -644,14 +647,10 @@ class SchedulingTool:
                 (slot.date == bali_today and slot.start_time > now_bali.time())
             ]
 
-        # Filter out slots that are too early/late in client's timezone
-        # Nobody wants a meeting at 3am their time!
+        # Filter out slots that fall outside reasonable hours in client's timezone
         if client_timezone:
             available_slots = self._filter_slots_by_client_hours(
-                available_slots,
-                client_timezone,
-                min_hour=8,   # No earlier than 8am client time
-                max_hour=22   # No later than 10pm client time
+                available_slots, client_timezone
             )
 
         if not available_slots:
@@ -819,35 +818,63 @@ class SchedulingTool:
         # Try to create Google Calendar event
         calendar_created = False
         if self.calendar_connector:
-            try:
-                # Format times for Google Calendar (ISO 8601)
-                start_iso = meeting_start.strftime("%Y-%m-%dT%H:%M:%S")
-                end_iso = meeting_end.strftime("%Y-%m-%dT%H:%M:%S")
+            if not self.rep_telegram_id:
+                print(f"WARNING: Cannot create calendar event - rep_telegram_id is None")
+            elif not self.calendar_connector.is_connected(self.rep_telegram_id):
+                print(f"WARNING: Calendar not connected for rep {self.rep_telegram_id} - no token file found")
+            else:
+                try:
+                    # Format times for Google Calendar (ISO 8601)
+                    start_iso = meeting_start.strftime("%Y-%m-%dT%H:%M:%S")
+                    end_iso = meeting_end.strftime("%Y-%m-%dT%H:%M:%S")
 
-                description_parts = [
-                    f"Консультация по недвижимости на Бали\n",
-                    f"Клиент: {prospect.name}",
-                    f"Email: {client_email}",
-                ]
-                if zoom_url:
-                    description_parts.append(f"\nZoom: {zoom_url}")
-                description = "\n".join(description_parts)
+                    description_parts = [
+                        f"Консультация по недвижимости на Бали\n",
+                        f"Клиент: {prospect.name}",
+                        f"Email: {client_email}",
+                    ]
+                    if zoom_url:
+                        description_parts.append(f"\nZoom: {zoom_url}")
 
-                self.calendar_connector.create_event(
-                    telegram_id=self.rep_telegram_id,
-                    summary=f"Консультация: {prospect.name}",
-                    start=start_iso,
-                    end=end_iso,
-                    description=description,
-                    location=zoom_url or "",
-                    attendees=[client_email],
-                    timezone="Asia/Makassar"
-                )
-                calendar_created = True
-            except Exception as e:
-                # Log error but continue
-                print(f"Failed to create Google Calendar event: {e}")
-                calendar_created = False
+                    # Add short client summary from available data
+                    client_info_parts = []
+                    if prospect.context:
+                        client_info_parts.append(prospect.context)
+                    if getattr(prospect, 'extracted_facts', None):
+                        facts = prospect.extracted_facts
+                        if facts.get('budget'):
+                            client_info_parts.append(f"Бюджет: {facts['budget']}")
+                        if facts.get('location'):
+                            client_info_parts.append(f"Локация: {facts['location']}")
+                        if facts.get('timeline'):
+                            client_info_parts.append(f"Сроки: {facts['timeline']}")
+                        if facts.get('needs'):
+                            client_info_parts.append(f"Потребности: {facts['needs']}")
+                    if client_info_parts:
+                        description_parts.append(f"\n--- О клиенте ---")
+                        description_parts.extend(client_info_parts)
+
+                    description = "\n".join(description_parts)
+
+                    event_result = self.calendar_connector.create_event(
+                        telegram_id=self.rep_telegram_id,
+                        summary=f"Консультация: {prospect.name}",
+                        start=start_iso,
+                        end=end_iso,
+                        description=description,
+                        location=zoom_url or "",
+                        attendees=[client_email],
+                        timezone="Asia/Makassar"
+                    )
+                    if event_result:
+                        calendar_created = True
+                        print(f"Google Calendar event created: {event_result.get('htmlLink', 'no link')}")
+                    else:
+                        print(f"WARNING: create_event returned None for rep {self.rep_telegram_id}")
+                except Exception as e:
+                    # Log error but continue
+                    print(f"Failed to create Google Calendar event: {e}")
+                    calendar_created = False
 
         # Format confirmation message based on what was actually created
         formatted_date = self._format_date_russian(booked_slot.date)
@@ -989,6 +1016,12 @@ class SchedulingTool:
                     days=3
                 )
 
+        # Filter alternatives by client hours (no 3am suggestions)
+        if client_timezone:
+            available_slots = self._filter_slots_by_client_hours(
+                available_slots, client_timezone
+            )
+
         if not available_slots:
             return "К сожалению, нет свободных слотов в ближайшие дни."
 
@@ -1028,7 +1061,7 @@ if __name__ == "__main__":
     print(availability)
     print()
 
-    print("=== Available Times (with Moscow timezone) ===")
+    print("=== Available Times (with Moscow timezone - client only) ===")
     availability_tz = tool.get_available_times(days=3, client_timezone="Europe/Moscow")
     print(availability_tz)
     print()
