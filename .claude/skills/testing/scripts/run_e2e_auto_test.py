@@ -730,10 +730,11 @@ async def main():
 
         results = []
 
-        # Delete old messages BEFORE Phase 1 to ensure a clean slate.
-        # The daemon will send a fresh initial outreach after we clear the chat.
-        await delete_chat_history(player)
-        await asyncio.sleep(5)
+        # NOTE: Chat cleanup and prospect reset must happen BEFORE the daemon
+        # Docker container starts. The daemon sends initial outreach immediately
+        # on startup, so deleting chat history here would race against the daemon
+        # and delete the initial message Phase 1 is waiting for.
+        # The calling workflow (telegram_conversation_manual_test) handles pre-cleanup.
 
         # Phase 1: Initial Contact
         r1 = await phase1_initial_contact(player)

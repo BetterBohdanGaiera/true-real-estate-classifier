@@ -86,6 +86,7 @@ class TelegramDaemon:
         self.bot_username = None  # Username of the bot account
         self.message_buffer = None  # Initialized in initialize()
         self.running = False
+        self._offered_slots: dict[str, list[str]] = {}  # prospect_id -> offered slot_ids
         self.stats = {
             "messages_sent": 0,
             "messages_received": 0,
@@ -441,6 +442,17 @@ class TelegramDaemon:
             if agent_client_tz:
                 client_tz = agent_client_tz
 
+            # Persist email early if provided in scheduling_data (Issue 3 fix)
+            sched_email = sched_data.get("email")
+            if sched_email and sched_email.strip():
+                self.prospect_manager.update_prospect_email(
+                    prospect.telegram_id, sched_email.strip()
+                )
+                console.print(f"[blue]Email persisted from check_availability: {sched_email.strip()}[/blue]")
+
+            # Initialize offered_ids before branching
+            offered_ids = []
+
             if preferred_time_str and preferred_date_str:
                 # User provided a SPECIFIC time - use confirm_time_slot instead of full list
                 try:
@@ -473,23 +485,28 @@ class TelegramDaemon:
                         f"Bali {target_date} {target_time}[/blue]"
                     )
 
-                    availability_text = self.scheduling_tool.confirm_time_slot(
+                    availability_text, offered_ids = self.scheduling_tool.confirm_time_slot(
                         target_date=target_date,
                         target_time=target_time,
                         client_timezone=client_tz
                     )
                 except (ValueError, KeyError) as e:
                     console.print(f"[yellow]Failed to parse preferred time: {e}, falling back to full list[/yellow]")
-                    availability_text = self.scheduling_tool.get_available_times(
+                    availability_text, offered_ids = self.scheduling_tool.get_available_times(
                         days=7,
                         client_timezone=client_tz
                     )
             else:
                 # No specific time - show all available slots
-                availability_text = self.scheduling_tool.get_available_times(
+                availability_text, offered_ids = self.scheduling_tool.get_available_times(
                     days=7,
                     client_timezone=client_tz
                 )
+
+            # Track offered slots for validation when booking (Issue 5 fix)
+            self._offered_slots[str(prospect.telegram_id)] = offered_ids
+            if offered_ids:
+                console.print(f"[dim]Tracking {len(offered_ids)} offered slots for {prospect.name}: {offered_ids[:3]}...[/dim]")
 
             # Send availability to user
             result = await self.service.send_message(
@@ -517,6 +534,17 @@ class TelegramDaemon:
         # Handle schedule action
         elif action.action == "schedule" and action.scheduling_data:
             slot_id = action.scheduling_data.get("slot_id")
+
+            # Validate slot_id was actually offered to client (Issue 5 fix)
+            prospect_key = str(prospect.telegram_id)
+            offered = self._offered_slots.get(prospect_key, [])
+            if offered and slot_id not in offered:
+                console.print(
+                    f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
+                    f"Offered: {offered}. Auto-correcting to first offered slot: {offered[0]}[/yellow]"
+                )
+                slot_id = offered[0]
+
             client_email = action.scheduling_data.get("email", "")
             topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
 

@@ -599,7 +599,7 @@ class SchedulingTool:
         days: int = 3,
         client_timezone: Optional[str] = None,
         use_ranges: bool = True
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         """
         Get available time slots formatted for user consumption.
 
@@ -618,7 +618,7 @@ class SchedulingTool:
             use_ranges: Whether to merge slots into ranges (default: True)
 
         Returns:
-            Formatted string with available slots or ranges.
+            Tuple of (formatted string with available slots/ranges, list of all offered slot IDs).
         """
         # Use Bali timezone for "today" calculation
         bali_today = datetime.now(BALI_TZ).date()
@@ -654,7 +654,7 @@ class SchedulingTool:
             )
 
         if not available_slots:
-            return f"К сожалению, нет свободных слотов в ближайшие {days} дней."
+            return f"К сожалению, нет свободных слотов в ближайшие {days} дней.", []
 
         # NEW: Use range-based formatting for natural communication
         if use_ranges:
@@ -673,7 +673,8 @@ class SchedulingTool:
                 all_ranges.extend(day_ranges)
 
             # Format naturally using tone-of-voice guidelines
-            return self._format_time_ranges_natural(all_ranges, client_timezone)
+            all_slot_ids = [slot.id for slot in available_slots]
+            return self._format_time_ranges_natural(all_ranges, client_timezone), all_slot_ids
 
         # OLD: Keep existing individual slot display for backward compatibility
         # Group slots by date
@@ -713,7 +714,8 @@ class SchedulingTool:
 
             lines.append("")
 
-        return "\n".join(lines).rstrip()
+        all_slot_ids = [slot.id for slot in available_slots]
+        return "\n".join(lines).rstrip(), all_slot_ids
 
     def book_meeting(
         self,
@@ -950,7 +952,7 @@ class SchedulingTool:
         target_date: date,
         target_time: time,
         client_timezone: Optional[str] = None,
-    ) -> str:
+    ) -> tuple[str, list[str]]:
         """
         Check if a specific time slot is available and return confirmation or alternatives.
 
@@ -963,7 +965,7 @@ class SchedulingTool:
             client_timezone: Optional client timezone for dual-timezone display
 
         Returns:
-            Formatted string confirming the time or suggesting alternatives.
+            Tuple of (formatted string, list of offered slot IDs).
         """
         # Get available slots using real calendar when possible
         if self.calendar_connector and self.rep_telegram_id:
@@ -994,9 +996,9 @@ class SchedulingTool:
             if client_timezone:
                 meeting_dt = datetime.combine(target_date, target_time, tzinfo=BALI_TZ)
                 dual_time = self._format_dual_timezone(meeting_dt, client_timezone)
-                return f"{formatted_date} в {dual_time} - свободно!"
+                return f"{formatted_date} в {dual_time} - свободно!", [slot.id]
             else:
-                return f"{formatted_date} в {time_str} (Бали UTC+8) - свободно!"
+                return f"{formatted_date} в {time_str} (Бали UTC+8) - свободно!", [slot.id]
 
         # Slot not available - use already-fetched day_slots as alternatives
         available_slots = day_slots
@@ -1023,11 +1025,12 @@ class SchedulingTool:
             )
 
         if not available_slots:
-            return "К сожалению, нет свободных слотов в ближайшие дни."
+            return "К сожалению, нет свободных слотов в ближайшие дни.", []
 
         # Format up to 3 nearest alternatives
         time_str = target_time.strftime("%H:%M")
         alternatives = available_slots[:3]
+        offered_ids = [alt_slot.id for alt_slot in alternatives]
 
         alt_strs = []
         for alt_slot in alternatives:
@@ -1044,7 +1047,8 @@ class SchedulingTool:
         formatted_date = self._format_date_russian(target_date)
         return (
             f"К сожалению, {formatted_date} в {time_str} занято.\n\n"
-            f"Ближайшие свободные слоты:\n- {alternatives_text}"
+            f"Ближайшие свободные слоты:\n- {alternatives_text}",
+            offered_ids
         )
 
 # Simple test
@@ -1057,12 +1061,12 @@ if __name__ == "__main__":
     tool = SchedulingTool(calendar)
 
     print("=== Available Times (Bali timezone only) ===")
-    availability = tool.get_available_times(days=3)
+    availability, _ = tool.get_available_times(days=3)
     print(availability)
     print()
 
     print("=== Available Times (with Moscow timezone - client only) ===")
-    availability_tz = tool.get_available_times(days=3, client_timezone="Europe/Moscow")
+    availability_tz, _ = tool.get_available_times(days=3, client_timezone="Europe/Moscow")
     print(availability_tz)
     print()
 
