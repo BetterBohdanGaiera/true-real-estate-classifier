@@ -717,6 +717,84 @@ class SchedulingTool:
         all_slot_ids = [slot.id for slot in available_slots]
         return "\n".join(lines).rstrip(), all_slot_ids
 
+    def _generate_client_facing_description(
+        self,
+        prospect: Prospect,
+        zoom_url: Optional[str] = None
+    ) -> tuple[str, str]:
+        """
+        Generate client-facing calendar event summary and description.
+
+        Returns professional, personalized meeting invitation content
+        instead of internal CRM notes.
+
+        Args:
+            prospect: Prospect with name, context, extracted_facts
+            zoom_url: Optional Zoom meeting URL
+
+        Returns:
+            Tuple of (summary, description) for the calendar event.
+        """
+        facts = getattr(prospect, 'extracted_facts', None) or {}
+        needs = (facts.get('needs') or '').lower()
+
+        # Choose summary based on client needs
+        if 'инвестиц' in needs:
+            summary = "True Real Estate: Инвестиционная Консультация Бали"
+        elif any(kw in needs for kw in ['вилл', 'дом']):
+            summary = "True Real Estate: Подбор Недвижимости Бали"
+        elif 'апартамент' in needs:
+            summary = "True Real Estate: Инвестиционные Апартаменты Бали"
+        else:
+            summary = "True Real Estate: Консультация по Недвижимости"
+
+        # Build personalized value points
+        value_points = []
+
+        budget = facts.get('budget', '')
+        if budget:
+            value_points.append(f"- Покажем подходящие варианты в бюджете {budget}")
+        else:
+            value_points.append("- Подберём варианты под ваш бюджет")
+
+        if 'инвестиц' in needs:
+            value_points.append("- Разберём доходность и окупаемость проектов")
+        elif any(kw in needs for kw in ['вилл', 'дом']):
+            value_points.append("- Обсудим виллы с учётом ваших предпочтений")
+        elif 'апартамент' in needs:
+            value_points.append("- Покажем апартаменты с лучшей доходностью")
+        else:
+            value_points.append("- Покажем актуальные варианты на рынке Бали")
+
+        location = facts.get('location', '')
+        if location and location.strip():
+            value_points.append(f"- Рассмотрим районы: {location}")
+
+        value_points.append("- Ответим на все вопросы по рынку Бали")
+
+        # Format description
+        lines = [
+            f"Приветствуем, {prospect.name}!",
+            "",
+            "На встрече мы:",
+        ]
+        lines.extend(value_points)
+
+        if zoom_url:
+            lines.extend([
+                "",
+                "Ссылка на Zoom:",
+                zoom_url,
+            ])
+
+        lines.extend([
+            "",
+            "До встречи!",
+            "True Real Estate Team"
+        ])
+
+        return summary, "\n".join(lines)
+
     def book_meeting(
         self,
         slot_id: str,
@@ -830,40 +908,18 @@ class SchedulingTool:
                     start_iso = meeting_start.strftime("%Y-%m-%dT%H:%M:%S")
                     end_iso = meeting_end.strftime("%Y-%m-%dT%H:%M:%S")
 
-                    description_parts = [
-                        f"Консультация по недвижимости на Бали\n",
-                        f"Клиент: {prospect.name}",
-                        f"Email: {client_email}",
-                    ]
-                    if zoom_url:
-                        description_parts.append(f"\nZoom: {zoom_url}")
-
-                    # Add short client summary from available data
-                    client_info_parts = []
-                    if prospect.context:
-                        client_info_parts.append(prospect.context)
-                    if getattr(prospect, 'extracted_facts', None):
-                        facts = prospect.extracted_facts
-                        if facts.get('budget'):
-                            client_info_parts.append(f"Бюджет: {facts['budget']}")
-                        if facts.get('location'):
-                            client_info_parts.append(f"Локация: {facts['location']}")
-                        if facts.get('timeline'):
-                            client_info_parts.append(f"Сроки: {facts['timeline']}")
-                        if facts.get('needs'):
-                            client_info_parts.append(f"Потребности: {facts['needs']}")
-                    if client_info_parts:
-                        description_parts.append(f"\n--- О клиенте ---")
-                        description_parts.extend(client_info_parts)
-
-                    description = "\n".join(description_parts)
+                    # Generate client-facing event content
+                    event_summary, event_description = self._generate_client_facing_description(
+                        prospect=prospect,
+                        zoom_url=zoom_url
+                    )
 
                     event_result = self.calendar_connector.create_event(
                         telegram_id=self.rep_telegram_id,
-                        summary=f"Консультация: {prospect.name}",
+                        summary=event_summary,
                         start=start_iso,
                         end=end_iso,
-                        description=description,
+                        description=event_description,
                         location=zoom_url or "",
                         attendees=[client_email],
                         timezone="Asia/Makassar"

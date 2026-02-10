@@ -2,18 +2,19 @@
 """
 Automated E2E Conversation Test via Real Telegram.
 
-Extended version: Tests 8 critical agent behaviors including Snake methodology,
-BANT qualification, objection handling, pain summary before Zoom, and scheduling.
+Extended version: Tests 9 critical agent behaviors including Snake methodology,
+multi-message handling, BANT qualification, objection handling, pain summary before Zoom, and scheduling.
 
 Phases:
 1. Initial Contact & Snake Light Entry
 2. Wait Behavior (respects "wait 2 minutes")
 3. ROI Question + "Bubble" Objection
-4. BANT: Budget + Need + "Send Catalog" Objection
-5. BANT: Authority + Timeline + "Leasehold" Objection
-6. Pain Summary & Zoom Proposal
-7. Timezone-Aware Scheduling & Email Collection
-8. Meeting Booking & Calendar Validation
+4. Multi-Message Burst
+5. BANT: Budget + Need + "Send Catalog" Objection
+6. BANT: Authority + Timeline + "Leasehold" Objection
+7. Pain Summary & Zoom Proposal
+8. Timezone-Aware Scheduling & Email Collection
+9. Meeting Booking & Calendar Validation
 
 Usage:
     PYTHONPATH=src uv run python .claude/skills/testing/scripts/run_e2e_auto_test.py
@@ -21,6 +22,7 @@ Usage:
 import asyncio
 import json
 import os
+import random
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -293,15 +295,81 @@ async def phase3_roi_and_bubble(player: E2ETelegramPlayer) -> TestResult:
 
 
 # =============================================================================
-# PHASE 4: BANT Budget + Need + "Send Catalog" Objection
+# PHASE 4: Multi-Message Burst
 # =============================================================================
-async def phase4_budget_need_catalog(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(4, "BANT: Budget + Need + Catalog Deflection")
+async def phase4_multi_message_burst(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(4, "Multi-Message Burst")
     print("\n" + "=" * 60)
-    print("[PHASE 4] Testing budget handling, catalog deflection, no early Zoom...")
+    print("[PHASE 4] Testing rapid multi-message handling...")
     print("=" * 60)
 
-    # 4a: Budget + catalog request
+    # Send 4 messages in quick succession (1-2s apart)
+    burst_messages = [
+        "У меня несколько вопросов накопилось.",
+        "Во-первых, сколько реально стоит содержание виллы?",
+        "Во-вторых, можно ли купить на компанию?",
+        "И еще - как с визами для длительного проживания?",
+    ]
+
+    for i, msg in enumerate(burst_messages):
+        print(f"  [PROSPECT] {msg}")
+        await player.send_message(AGENT_USERNAME, msg)
+        result.messages.append(("PROSPECT", msg, _ts()))
+
+        # Short delay between messages (simulate rapid typing)
+        if i < len(burst_messages) - 1:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+
+    print("  Waiting for batched response (60s)...")
+    resp = await player.wait_for_response(AGENT_USERNAME, timeout=60.0, poll_interval=2.0)
+
+    if resp is None:
+        result.details = "TIMEOUT: No response to multi-message burst"
+        print(f"  FAIL: {result.details}")
+        return result
+
+    print(f"  [AGENT] {resp}")
+    result.messages.append(("AGENT", resp, _ts()))
+
+    # Check if response addresses multiple topics
+    addresses_villa_costs = _contains_any(resp, ["содержан", "расход", "счет", "коммунал", "обслуж", "стоимост"])
+    addresses_company = _contains_any(resp, ["компан", "юрлиц", "PT PMA", "оформл", "юридическ"])
+    addresses_visa = _contains_any(resp, ["виз", "ВНЖ", "KITAS", "KITAP", "резиденц", "проживан"])
+
+    topics_addressed = sum([addresses_villa_costs, addresses_company, addresses_visa])
+    has_question = "?" in resp
+
+    result.checks = {
+        "addresses_villa_costs": addresses_villa_costs,
+        "addresses_company": addresses_company,
+        "addresses_visa": addresses_visa,
+        "topics_addressed": topics_addressed,
+        "has_followup_question": has_question,
+    }
+
+    details = []
+    details.append(f"Topics addressed: {topics_addressed}/3")
+    details.append(f"Villa costs: {'Y' if addresses_villa_costs else 'N'}")
+    details.append(f"Company: {'Y' if addresses_company else 'N'}")
+    details.append(f"Visa: {'Y' if addresses_visa else 'N'}")
+    details.append(f"Follow-up Q: {'Y' if has_question else 'N'}")
+
+    result.details = "; ".join(details)
+    result.passed = topics_addressed >= 2
+    print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
+    return result
+
+
+# =============================================================================
+# PHASE 5: BANT Budget + Need + "Send Catalog" Objection
+# =============================================================================
+async def phase5_budget_need_catalog(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(5, "BANT: Budget + Need + Catalog Deflection")
+    print("\n" + "=" * 60)
+    print("[PHASE 5] Testing budget handling, catalog deflection, no early Zoom...")
+    print("=" * 60)
+
+    # 5a: Budget + catalog request
     msg_a = "Ладно, допустим. Бюджет у меня около 300 тысяч долларов. Хочу гарантированную доходность. Скиньте каталог посмотрю."
     print(f"  [PROSPECT] {msg_a}")
     await player.send_message(AGENT_USERNAME, msg_a)
@@ -323,7 +391,7 @@ async def phase4_budget_need_catalog(player: E2ETelegramPlayer) -> TestResult:
     no_early_zoom_a = not _check_zoom_mention(resp_a)
     has_question_a = "?" in resp_a
 
-    # 4b: Need clarification - pure investment
+    # 5b: Need clarification - pure investment
     await asyncio.sleep(3)
     msg_b = "Ну ок, без каталога. Мне интересны апартаменты чисто как инвестиция, сам жить не планирую."
     print(f"  [PROSPECT] {msg_b}")
@@ -368,15 +436,15 @@ async def phase4_budget_need_catalog(player: E2ETelegramPlayer) -> TestResult:
 
 
 # =============================================================================
-# PHASE 5: BANT Authority + Timeline + Leasehold Objection
+# PHASE 6: BANT Authority + Timeline + Leasehold Objection
 # =============================================================================
-async def phase5_authority_timeline_leasehold(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(5, "BANT: Authority + Timeline + Leasehold Objection")
+async def phase6_authority_timeline_leasehold(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(6, "BANT: Authority + Timeline + Leasehold Objection")
     print("\n" + "=" * 60)
-    print("[PHASE 5] Testing authority/timeline collection and leasehold objection...")
+    print("[PHASE 6] Testing authority/timeline collection and leasehold objection...")
     print("=" * 60)
 
-    # 5a: Authority + Leasehold objection
+    # 6a: Authority + Leasehold objection
     msg_a = "Решение принимаю сам, но жена тоже участвует в обсуждении. А leasehold - это же не настоящая собственность? Что если отберут?"
     print(f"  [PROSPECT] {msg_a}")
     await player.send_message(AGENT_USERNAME, msg_a)
@@ -396,7 +464,7 @@ async def phase5_authority_timeline_leasehold(player: E2ETelegramPlayer) -> Test
     no_made_up = not _contains_any(resp_a, ["freehold для иностранц", "полная собственность"])
     has_question_a = "?" in resp_a
 
-    # 5b: Timeline + Guarantees objection
+    # 6b: Timeline + Guarantees objection
     await asyncio.sleep(3)
     msg_b = "Хочу купить в ближайшие 2-3 месяца. Но какие гарантии что застройщик не кинет?"
     print(f"  [PROSPECT] {msg_b}")
@@ -436,37 +504,37 @@ async def phase5_authority_timeline_leasehold(player: E2ETelegramPlayer) -> Test
 
 
 # =============================================================================
-# PHASE 6: Pain Summary & Zoom Proposal
+# PHASE 7: Pain Summary & Zoom Proposal
 # =============================================================================
-async def phase6_pain_summary_zoom(player: E2ETelegramPlayer, phase5_last_msg: str) -> TestResult:
-    result = TestResult(6, "Pain Summary & Zoom Proposal")
+async def phase7_pain_summary_zoom(player: E2ETelegramPlayer, phase6_last_msg: str) -> TestResult:
+    result = TestResult(7, "Pain Summary & Zoom Proposal")
     print("\n" + "=" * 60)
-    print("[PHASE 6] Checking pain summary and Zoom proposal quality...")
+    print("[PHASE 7] Checking pain summary and Zoom proposal quality...")
     print("=" * 60)
 
-    # Check if the agent's last response (from phase 5b) already contained a Zoom proposal
-    has_zoom_in_phase5 = _check_zoom_mention(phase5_last_msg)
-    has_summary_in_phase5 = _contains_any(phase5_last_msg, [
+    # Check if the agent's last response (from phase 6b) already contained a Zoom proposal
+    has_zoom_in_phase6 = _check_zoom_mention(phase6_last_msg)
+    has_summary_in_phase6 = _contains_any(phase6_last_msg, [
         "итак", "резюмир", "подытож", "ваш запрос", "вас интерес",
         "бюджет", "апартамент", "инвестиц", "300", "надёжн", "гарант"
     ])
 
-    if has_zoom_in_phase5:
-        print(f"  Agent already proposed Zoom in Phase 5 response")
+    if has_zoom_in_phase6:
+        print(f"  Agent already proposed Zoom in Phase 6 response")
         print(f"  Checking if pain summary was included...")
 
         result.checks = {
             "zoom_proposed": True,
-            "has_pain_summary": has_summary_in_phase5,
-            "from_phase5": True,
+            "has_pain_summary": has_summary_in_phase6,
+            "from_phase6": True,
         }
 
-        if has_summary_in_phase5:
+        if has_summary_in_phase6:
             result.passed = True
-            result.details = "Pain summary + Zoom proposal found in Phase 5 response"
+            result.details = "Pain summary + Zoom proposal found in Phase 6 response"
         else:
             result.passed = False
-            result.details = "Zoom proposed in Phase 5 BUT without pain summary (anti-pattern #5: premature Zoom)"
+            result.details = "Zoom proposed in Phase 6 BUT without pain summary (anti-pattern #5: premature Zoom)"
         print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
         return result
 
@@ -516,15 +584,15 @@ async def phase6_pain_summary_zoom(player: E2ETelegramPlayer, phase5_last_msg: s
 
 
 # =============================================================================
-# PHASE 7: Timezone-Aware Scheduling & Email Collection
+# PHASE 8: Timezone-Aware Scheduling & Email Collection
 # =============================================================================
-async def phase7_timezone_email(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(7, "Timezone-Aware Scheduling & Email Collection")
+async def phase8_timezone_email(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(8, "Timezone-Aware Scheduling & Email Collection")
     print("\n" + "=" * 60)
-    print("[PHASE 7] Testing timezone & email collection...")
+    print("[PHASE 8] Testing timezone & email collection...")
     print("=" * 60)
 
-    # 7a: Accept Zoom, mention Warsaw
+    # 8a: Accept Zoom, mention Warsaw
     msg_a = "Ок, давайте созвонимся. Только я сейчас в Варшаве, учтите разницу во времени."
     print(f"  [PROSPECT] {msg_a}")
     await player.send_message(AGENT_USERNAME, msg_a)
@@ -543,7 +611,7 @@ async def phase7_timezone_email(player: E2ETelegramPlayer) -> TestResult:
     mentions_tz = _contains_any(resp_a, ["варшав", "warsaw", "utc+1", "utc+2", "бали", "utc+8"])
     asks_email = _contains_any(resp_a, ["email", "e-mail", "почт", "mail"])
 
-    # 7b: Send email
+    # 8b: Send email
     await asyncio.sleep(2)
     print(f"  [PROSPECT] {TEST_CLIENT_EMAIL}")
     await player.send_message(AGENT_USERNAME, TEST_CLIENT_EMAIL)
@@ -561,7 +629,7 @@ async def phase7_timezone_email(player: E2ETelegramPlayer) -> TestResult:
 
     has_client_tz = _contains_any(resp_b, ["варшав", "warsaw", "utc+1", "utc+2", "ваш", "вашего"])
 
-    # 7c: Pick a time
+    # 8c: Pick a time
     await asyncio.sleep(2)
     msg_c = "Завтра в 10:00 по моему времени подойдёт"
     print(f"  [PROSPECT] {msg_c}")
@@ -571,7 +639,7 @@ async def phase7_timezone_email(player: E2ETelegramPlayer) -> TestResult:
     print("  Waiting for confirmation (60s)...")
     resp_c = await player.wait_for_response(AGENT_USERNAME, timeout=60.0, poll_interval=2.0)
     if resp_c is None:
-        result.details = f"TZ: {'Y' if mentions_tz else 'N'}, Dual TZ: {'Y' if dual_tz else 'N'}, TIMEOUT on confirmation"
+        result.details = f"TZ: {'Y' if mentions_tz else 'N'}, Client TZ: {'Y' if has_client_tz else 'N'}, TIMEOUT on confirmation"
         print(f"  FAIL: {result.details}")
         return result
 
@@ -600,12 +668,12 @@ async def phase7_timezone_email(player: E2ETelegramPlayer) -> TestResult:
 
 
 # =============================================================================
-# PHASE 8: Meeting Booking & Calendar Validation
+# PHASE 9: Meeting Booking & Calendar Validation
 # =============================================================================
-async def phase8_booking_calendar(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(8, "Meeting Booking & Calendar Validation")
+async def phase9_booking_calendar(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(9, "Meeting Booking & Calendar Validation")
     print("\n" + "=" * 60)
-    print("[PHASE 8] Testing meeting booking & calendar...")
+    print("[PHASE 9] Testing meeting booking & calendar...")
     print("=" * 60)
 
     msg = "Да, записывайте!"
@@ -717,7 +785,7 @@ async def main():
     test_start = time.time()
     print("=" * 60)
     print("  AUTOMATED E2E TELEGRAM CONVERSATION TEST (EXTENDED)")
-    print("  8 Phases: Snake + BANT + Objections + Scheduling")
+    print("  9 Phases: Snake + Multi-Message + BANT + Objections + Scheduling")
     print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -748,31 +816,34 @@ async def main():
         r3 = await phase3_roi_and_bubble(player)
         results.append(r3)
 
-        # Phase 4: Budget + Need + Catalog Deflection
-        r4 = await phase4_budget_need_catalog(player)
+        # Phase 4: Multi-Message Burst (NEW)
+        r4 = await phase4_multi_message_burst(player)
         results.append(r4)
 
-        # Phase 5: Authority + Timeline + Leasehold Objection
-        r5 = await phase5_authority_timeline_leasehold(player)
+        # Phase 5: Budget + Need + Catalog Deflection (was Phase 4)
+        r5 = await phase5_budget_need_catalog(player)
         results.append(r5)
 
-        # Phase 6: Pain Summary & Zoom Proposal
-        # Pass the last agent message from phase 5 to check
-        phase5_last_agent_msg = ""
-        for sender, text, _ in reversed(r5.messages):
-            if sender == "AGENT":
-                phase5_last_agent_msg = text
-                break
-        r6 = await phase6_pain_summary_zoom(player, phase5_last_agent_msg)
+        # Phase 6: Authority + Timeline + Leasehold Objection (was Phase 5)
+        r6 = await phase6_authority_timeline_leasehold(player)
         results.append(r6)
 
-        # Phase 7: Timezone & Email
-        r7 = await phase7_timezone_email(player)
+        # Phase 7: Pain Summary & Zoom Proposal (was Phase 6)
+        phase6_last_agent_msg = ""
+        for sender, text, _ in reversed(r6.messages):
+            if sender == "AGENT":
+                phase6_last_agent_msg = text
+                break
+        r7 = await phase7_pain_summary_zoom(player, phase6_last_agent_msg)
         results.append(r7)
 
-        # Phase 8: Booking & Calendar
-        r8 = await phase8_booking_calendar(player)
+        # Phase 8: Timezone & Email (was Phase 7)
+        r8 = await phase8_timezone_email(player)
         results.append(r8)
+
+        # Phase 9: Booking & Calendar (was Phase 8)
+        r9 = await phase9_booking_calendar(player)
+        results.append(r9)
 
         # Collect full history
         print("\n[HISTORY] Collecting full conversation...")
@@ -790,10 +861,11 @@ async def main():
 
         methodology = {
             "snake_structure": r1.checks.get("is_light_entry", False),
-            "bant_before_zoom": r4.checks.get("no_early_zoom", False),
-            "pain_summary_before_zoom": r6.checks.get("has_pain_summary", False),
+            "multi_message_handling": r4.checks.get("topics_addressed", 0) >= 2,
+            "bant_before_zoom": r5.checks.get("no_early_zoom", False),
+            "pain_summary_before_zoom": r7.checks.get("has_pain_summary", False),
             "objections_with_empathy": r3.checks.get("shows_empathy", False) and r3.checks.get("no_devalue", False),
-            "no_anti_patterns": r4.checks.get("catalog_deflected", False),
+            "no_anti_patterns": r5.checks.get("catalog_deflected", False),
             "messages_concise": True,  # Checked qualitatively
         }
 

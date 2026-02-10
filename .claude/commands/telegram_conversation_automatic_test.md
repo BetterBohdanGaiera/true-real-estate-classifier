@@ -17,7 +17,7 @@ This command runs a fully automated end-to-end conversation test between the sal
 - **Timezone-aware scheduling**: Client timezone display, email collection
 - **Calendar event creation**: Google Calendar with attendee invite
 
-The conversation has 8 phases and ~15+ message exchanges, testing the agent's ability to handle a realistic, challenging client interaction.
+The conversation has 9 phases and ~18+ message exchanges, testing the agent's ability to handle a realistic, challenging client interaction.
 
 ## Variables
 
@@ -42,7 +42,7 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
 - This command orchestrates a fully automated end-to-end conversation test over real Telegram infrastructure
 - The test uses the E2ETelegramPlayer (`.claude/skills/testing/scripts/e2e_telegram_player.py`) to send messages AS @buddah_lucid to the running agent @BetterBohdan
 - The agent must already be running (either locally via daemon or via Docker) before this test starts
-- The test follows a scripted conversation flow designed to validate EIGHT specific behavioral areas
+- The test follows a scripted conversation flow designed to validate NINE specific behavioral areas
 - Each test phase has explicit PASS/FAIL criteria - the test is deterministic, not exploratory
 - IMPORTANT: The conversation is conducted in Russian, matching the agent's configured language
 - IMPORTANT: The test prospect must be reset to "new" status before starting so the agent sends its initial outreach
@@ -115,7 +115,16 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
    - Wait for agent response (60s timeout)
    - PASS criteria (objection handling): Agent does NOT devalue client's opinion, addresses with FACTS (market limitations, data, 270M population), does NOT get defensive, shows empathy ("Понимаю опасения"), asks a follow-up question
 
-8. **Phase 4 - BANT: Budget + Need + "Send Catalog" Objection (PASS/FAIL):**
+8. **Phase 4 - Multi-Message Burst (PASS/FAIL):**
+   - Send as prospect (rapid succession, 1-2s apart):
+     1. "У меня несколько вопросов накопилось."
+     2. "Во-первых, сколько реально стоит содержание виллы?"
+     3. "Во-вторых, можно ли купить на компанию?"
+     4. "И еще - как с визами для длительного проживания?"
+   - Wait for agent response (60s timeout)
+   - PASS criteria: Agent batches all messages (via MessageBuffer) and responds naturally, addressing at least 2 of 3 topics (villa maintenance costs, company purchase structure, visas for long-term stay). Response is coherent, 1-3 sentences, includes a follow-up question. No messages ignored, no crash.
+
+9. **Phase 5 - BANT: Budget + Need + "Send Catalog" Objection (PASS/FAIL):**
    - Send as prospect: "Ладно, допустим. Бюджет у меня около 300 тысяч долларов. Хочу гарантированную доходность. Скиньте каталог посмотрю."
    - Wait for agent response (60s timeout)
    - PASS criteria: Agent does NOT just agree to send catalog (anti-pattern #8). Agent should deflect "catalog" request ("Каталог не покажет подходящие варианты", "на зуме разберем аналитику"). Agent acknowledges budget, asks about type (apartments/villa) or purpose (investment/living). Agent does NOT invite to Zoom yet (too early - only has Budget so far!)
@@ -123,22 +132,22 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
    - Wait for agent response (60s timeout)
    - PASS criteria: Agent reflects the answer (Snake: reflection), adds brief expertise, asks next BANT question (Authority or Timeline). Still does NOT invite to Zoom.
 
-9. **Phase 5 - BANT: Authority + Timeline + "Leasehold" Objection (PASS/FAIL):**
-   - Send as prospect: "Решение принимаю сам, но жена тоже участвует в обсуждении. А leasehold - это же не настоящая собственность? Что если отберут?"
-   - Wait for agent response (60s timeout)
-   - PASS criteria: Agent handles leasehold objection with FACTS (like London, 30+ years, legal protection), does NOT make up information, notes Authority (client + wife), asks about Timeline
-   - Send as prospect: "Хочу купить в ближайшие 2-3 месяца. Но какие гарантии что застройщик не кинет?"
-   - Wait for agent response (60s timeout)
-   - PASS criteria: Agent addresses guarantee concern with facts (notary, due diligence 140 points, we reject 90% of developers), acknowledges timeline. Now agent has full BANT (Budget: $300k, Authority: self+wife, Need: investment apartments, Timeline: 2-3 months). Agent should now do a PAIN SUMMARY before proposing Zoom.
+10. **Phase 6 - BANT: Authority + Timeline + "Leasehold" Objection (PASS/FAIL):**
+    - Send as prospect: "Решение принимаю сам, но жена тоже участвует в обсуждении. А leasehold - это же не настоящая собственность? Что если отберут?"
+    - Wait for agent response (60s timeout)
+    - PASS criteria: Agent handles leasehold objection with FACTS (like London, 30+ years, legal protection), does NOT make up information, notes Authority (client + wife), asks about Timeline
+    - Send as prospect: "Хочу купить в ближайшие 2-3 месяца. Но какие гарантии что застройщик не кинет?"
+    - Wait for agent response (60s timeout)
+    - PASS criteria: Agent addresses guarantee concern with facts (notary, due diligence 140 points, we reject 90% of developers), acknowledges timeline. Now agent has full BANT (Budget: $300k, Authority: self+wife, Need: investment apartments, Timeline: 2-3 months). Agent should now do a PAIN SUMMARY before proposing Zoom.
 
-10. **Phase 6 - Pain Summary & Zoom Proposal (PASS/FAIL):**
-    - This is a CHECK on what the agent says AFTER Phase 5. The agent's response to Phase 5 should:
+11. **Phase 7 - Pain Summary & Zoom Proposal (PASS/FAIL):**
+    - This is a CHECK on what the agent says AFTER Phase 6. The agent's response to Phase 6 should:
     - PASS criteria: Agent summarizes client's key points/pains BEFORE inviting to Zoom (e.g., "Итак, вас интересуют инвестиционные апартаменты, бюджет $300k, важна надёжность застройщика..."). Agent proposes Zoom WITH value explanation ("на встрече покажу аналитику по вашему запросу", "разберем конкретные проекты"). Agent proposes SPECIFIC time, not "when is convenient".
     - FAIL criteria: Agent jumps to Zoom without summary. Agent says generic "давайте созвонимся" without explaining value. Agent asks "когда удобно" without proposing times.
     - If agent hasn't proposed Zoom yet, send: "Интересно, что дальше?"
     - Wait for agent response and check for pain summary + Zoom proposal
 
-11. **Phase 7 - Timezone-Aware Scheduling & Email Collection (PASS/FAIL):**
+12. **Phase 8 - Timezone-Aware Scheduling & Email Collection (PASS/FAIL):**
     - Send as prospect: "Ок, давайте созвонимся. Только я сейчас в Варшаве, учтите разницу во времени."
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent acknowledges timezone (Warsaw/UTC+1 vs Bali/UTC+8), mentions Bali working hours context (works 10:00-19:00 Bali time), and asks for email
@@ -149,7 +158,7 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent confirms the specific time in client's timezone, does NOT dump all available slots again
 
-12. **Phase 8 - Meeting Booking & Calendar Validation (PASS/FAIL):**
+13. **Phase 9 - Meeting Booking & Calendar Validation (PASS/FAIL):**
     - Send as prospect: "Да, записывайте!"
     - Wait for agent response (90s timeout)
     - PASS criteria for message: Agent confirms meeting is scheduled, mentions the time, mentions the email, ideally includes Zoom link
@@ -157,11 +166,11 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
     - Validate Google Calendar: Use the CalendarConnector to check if a calendar event was created for tomorrow containing "buddah_lucid" or "Buddah" in the summary/description AND has `bohdan.pytaichuk@gmail.com` as an attendee
     - PASS criteria: Email stored in prospect data AND calendar event exists with attendee invite
 
-13. **Collect full conversation history:**
+14. **Collect full conversation history:**
     - Use E2ETelegramPlayer's `get_chat_history("@BetterBohdan", limit=100)` to retrieve the complete conversation
     - Alternatively read Docker logs for the full agent-side view
 
-14. **Cleanup:**
+15. **Cleanup:**
     - Stop Docker containers: `docker compose -f deployment/docker/docker-compose.yml down`
     - Do NOT delete Google Calendar events - preserve them for manual review after the test
 
@@ -175,19 +184,21 @@ Present results as a structured Rich panel report with the following sections:
 | 1 | Initial Contact (Snake: Light Entry) | PASS/FAIL | Message received in Xs, easy question Y/N, formal Y/N |
 | 2 | Wait Behavior | PASS/FAIL | Silent for Xs (need >=100s), follow-up at Xs (need <=180s) |
 | 3 | ROI + Bubble Objection | PASS/FAIL | Factual ROI Y/N, empathy on bubble Y/N, no devaluing Y/N |
-| 4 | Budget/Need + Catalog Deflection | PASS/FAIL | Catalog deflected Y/N, no early Zoom Y/N, BANT progress Y/N |
-| 5 | Authority/Timeline + Leasehold Objection | PASS/FAIL | Leasehold facts Y/N, guarantee handled Y/N, full BANT Y/N |
-| 6 | Pain Summary & Zoom Proposal | PASS/FAIL | Pain summary Y/N, Zoom value explained Y/N, specific time Y/N |
-| 7 | Timezone & Email | PASS/FAIL | Client timezone Y/N, email collected Y/N, time confirmed Y/N |
-| 8 | Calendar & Booking | PASS/FAIL | Meeting confirmed Y/N, calendar event Y/N, attendee invite Y/N |
+| 4 | Multi-Message Burst | PASS/FAIL | Topics addressed: N/3, batched Y/N, coherent Y/N |
+| 5 | Budget/Need + Catalog Deflection | PASS/FAIL | Catalog deflected Y/N, no early Zoom Y/N, BANT progress Y/N |
+| 6 | Authority/Timeline + Leasehold Objection | PASS/FAIL | Leasehold facts Y/N, guarantee handled Y/N, full BANT Y/N |
+| 7 | Pain Summary & Zoom Proposal | PASS/FAIL | Pain summary Y/N, Zoom value explained Y/N, specific time Y/N |
+| 8 | Timezone & Email | PASS/FAIL | Client timezone Y/N, email collected Y/N, time confirmed Y/N |
+| 9 | Calendar & Booking | PASS/FAIL | Meeting confirmed Y/N, calendar event Y/N, attendee invite Y/N |
 
-**Overall Score:** X/8 phases passed
+**Overall Score:** X/9 phases passed
 
 **Methodology Compliance Score:**
 - Snake structure followed: Y/N (light entry, reflections, expertise with facts)
 - BANT fully gathered before Zoom: Y/N
 - Pain summary before Zoom invitation: Y/N
 - Objections handled with empathy and facts: Y/N
+- Multi-message handling natural: Y/N (batched, addressed multiple topics coherently)
 - No anti-patterns detected: Y/N (no "зафиксировала", no early Zoom, no catalog surrender)
 - Messages concise (1-3 sentences): Y/N
 
