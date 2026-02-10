@@ -1,7 +1,7 @@
 """
 E2E Telegram Player for stress testing.
 
-Real Telegram integration that sends messages AS the test prospect (@bohdanpytaichuk)
+Real Telegram integration that sends messages AS the test prospect (@buddah_lucid)
 to the agent (@BetterBohdan), replacing the mock PersonaPlayer for E2E tests.
 
 Uses Telethon client with a separate session from the agent's session.

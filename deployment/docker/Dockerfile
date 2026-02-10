@@ -55,10 +55,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     # Set Python path for package imports
     PYTHONPATH="/app/src"
 
-# Install only runtime dependencies
+# Install Node.js (required for Claude Code CLI) and runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @anthropic-ai/claude-code \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -75,13 +79,18 @@ COPY pyproject.toml uv.lock ./
 # Copy the telegram_sales_bot package
 COPY src/ ./src/
 
-# Create directories for credentials (will be mounted as volumes)
-RUN mkdir -p /root/.telegram_dl /root/.zoom_credentials
+# Copy CLI task executor scripts (required for CLITelegramAgent)
+COPY .claude/skills/cli-task-executor/scripts/ ./.claude/skills/cli-task-executor/scripts/
 
-# Create non-root user for security (optional, comment out if credentials need root)
-# RUN useradd --create-home --shell /bin/bash agent && \
-#     chown -R agent:agent /app
-# USER agent
+# Copy system prompt template (required for CLITelegramAgent)
+COPY .claude/skills/telegram/config/agent_system_prompt.md ./.claude/skills/telegram/config/agent_system_prompt.md
+
+# Create non-root user (required: claude CLI refuses --dangerously-skip-permissions as root)
+RUN useradd --create-home --shell /bin/bash agent && \
+    chown -R agent:agent /app && \
+    mkdir -p /home/agent/.telegram_dl /home/agent/.zoom_credentials /home/agent/.sales_registry
+
+USER agent
 
 # Health check - verifies the Python environment and imports work
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

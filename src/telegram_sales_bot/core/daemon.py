@@ -568,6 +568,12 @@ class TelegramDaemon:
                 client_tz = prospect.estimated_timezone
                 console.print(f"[dim]Using stored timezone for booking: {client_tz}[/dim]")
 
+            # Override with agent-provided timezone if available (same as check_availability)
+            agent_client_tz = action.scheduling_data.get("client_timezone")
+            if agent_client_tz:
+                client_tz = agent_client_tz
+                console.print(f"[blue]Using agent-provided timezone for booking: {client_tz}[/blue]")
+
             # Store email in prospect record
             self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
 
@@ -1043,7 +1049,7 @@ class TelegramDaemon:
                 return
 
             # Check if already executed or cancelled
-            if action.status != "pending":
+            if action.status not in ("pending", "processing"):
                 console.print(f"[dim]Skipping {action.status} action {action.id}[/dim]")
                 return
 

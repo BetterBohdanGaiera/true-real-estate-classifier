@@ -88,7 +88,8 @@ services:
       # Note: Needs read-write access because Telethon updates the session file
       - ${HOME}/.telegram_dl:/home/agent/.telegram_dl:rw
       # Mount Zoom credentials (optional, for Zoom meeting scheduling)
-      - ${HOME}/.zoom_credentials:/home/agent/.zoom_credentials:ro
+      # Needs read-write: _get_access_token() caches OAuth token to token.json
+      - ${HOME}/.zoom_credentials:/home/agent/.zoom_credentials:rw
       # Mount sales registry for per-rep calendar tokens (optional)
       # Needs read-write: _load_credentials() saves refreshed OAuth tokens
       - ${HOME}/.sales_registry:/home/agent/.sales_registry:rw

@@ -311,6 +311,16 @@ class ProspectManager:
         prospect.timezone_confidence = confidence
         self._save_prospects()
 
+    def update_prospect_field(self, telegram_id: int | str, field: str, value) -> None:
+        """Update a single field on a prospect and persist."""
+        key = self._normalize_id(telegram_id)
+        prospect = self._prospects.get(key)
+        if not prospect:
+            return
+        if hasattr(prospect, field):
+            setattr(prospect, field, value)
+            self._save_prospects()
+
     def set_human_active(self, telegram_id: int | str) -> None:
         """
         Mark prospect as taken over by human operator.

@@ -107,7 +107,7 @@ class Prospect(BaseModel):
 
     # Temporal awareness fields
     estimated_timezone: Optional[str] = None  # e.g., "Europe/Moscow", "Asia/Dubai"
-    timezone_confidence: float = 0.0  # 0.0-1.0 confidence score for timezone estimate
+    timezone_confidence: Optional[float] = 0.0  # 0.0-1.0 confidence score for timezone estimate
     typical_active_hours: Optional[tuple[int, int]] = None  # e.g., (9, 23) for 9am-11pm
     last_seen_online: Optional[datetime] = None  # Last time prospect was seen active
 

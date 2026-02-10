@@ -12,9 +12,9 @@ Comprehensive testing utilities for the Telegram sales agent. Includes conversat
 | Role | Account | Telegram ID | Purpose |
 |------|---------|-------------|---------|
 | Sales Agent | @BetterBohdan | - | Runs the sales agent, sends outreach messages |
-| Test Prospect | @bohdanpytaichuk | 7836623698 | Receives messages from agent, plays client role |
+| Test Prospect | @buddah_lucid | 8503958942 | Receives messages from agent, plays client role |
 
-**Important:** Only use ONE test prospect (@bohdanpytaichuk) for all testing scenarios.
+**Important:** Only use ONE test prospect (@buddah_lucid) for all testing scenarios.
 
 ## Test Types Overview
 
@@ -142,7 +142,7 @@ PYTHONPATH=src uv run python src/sales_agent/testing/manual_test.py --clean-chat
 
 ### What Manual Test Does
 
-1. Resets @bohdanpytaichuk to `"new"` status in prospects.json
+1. Resets @buddah_lucid to `"new"` status in prospects.json
 2. Cancels any pending scheduled actions for the test prospect
 3. Optionally clears Telegram chat history
 4. Starts the daemon which sends initial outreach message
@@ -165,7 +165,7 @@ uv run python .claude/skills/testing/scripts/manual_test.py --docker --clean-cha
 
 ### What Docker Test Does
 
-1. Resets @bohdanpytaichuk to `"new"` status in prospects.json (skips DB cleanup)
+1. Resets @buddah_lucid to `"new"` status in prospects.json (skips DB cleanup)
 2. Optionally clears Telegram chat history
 3. Tears down previous Docker state (`docker compose down -v`)
 4. Builds and starts `postgres` + `telegram-agent` containers in foreground
@@ -382,6 +382,6 @@ Required packages (installed via uv):
 |-------|----------|
 | "database is locked" | Run `pkill -f "daemon.py"` first |
 | No message sent | Check prospect status is `"new"` in prospects.json |
-| Test prospect not found | Verify @bohdanpytaichuk in test_accounts.json |
+| Test prospect not found | Verify @buddah_lucid in test_accounts.json |
 | Telegram auth failed | Run setup for test_prospect session |
 | Score trends empty | Run some tests first to populate database |

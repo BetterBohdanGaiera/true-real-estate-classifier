@@ -270,7 +270,7 @@ class StressTestRunner:
     def __init__(
         self,
         agent_telegram_id: str = "@BetterBohdan",
-        test_prospect_telegram_id: str = "@bohdanpytaichuk",
+        test_prospect_telegram_id: str = "@buddah_lucid",
         max_turns: int = 20,
         use_daemon: bool = False,
     ):
@@ -280,7 +280,7 @@ class StressTestRunner:
         Args:
             agent_telegram_id: The agent's telegram ID (default: @BetterBohdan).
                                This is the account the sales agent operates as.
-            test_prospect_telegram_id: Test prospect's telegram ID (default: @bohdanpytaichuk).
+            test_prospect_telegram_id: Test prospect's telegram ID (default: @buddah_lucid).
                                        The test messages will be sent FROM this account.
             max_turns: Maximum conversation turns before timeout (default: 20).
                       A "turn" is a single message from either party.

@@ -40,14 +40,14 @@
 ## Manual Testing - Telegram Accounts
 
 - **Sales Agent Account:** @BetterBohdan - runs the sales agent, sends outreach messages
-- **Test Prospect Account:** @bohdanpytaichuk (Telegram ID: 7836623698) - the ONLY test prospect, receives messages from the agent
-- Only use ONE test prospect (@bohdanpytaichuk) for testing - do not create multiple test prospects
+- **Test Prospect Account:** @buddah_lucid (Telegram ID: 8503958942) - the ONLY test prospect, receives messages from the agent
+- Only use ONE test prospect (@buddah_lucid) for testing - do not create multiple test prospects
 
 ### Testing Initial Outreach (Telegram Agent)
 The main agent reads from `.claude/skills/telegram/config/prospects.json`. To test initial messages:
-1. Set @bohdanpytaichuk status to `"new"` in prospects.json
+1. Set @buddah_lucid status to `"new"` in prospects.json
 2. Run: `PYTHONPATH=src uv run python -m telegram_sales_bot.core.daemon`
-3. @bohdanpytaichuk receives the initial sales message from @BetterBohdan
+3. @buddah_lucid receives the initial sales message from @BetterBohdan
 
 ### Testing Assignment Notifications (Outreach Daemon)
 The outreach daemon uses `test_prospects` database table and notifies sales reps about new assignments.

@@ -5,7 +5,7 @@
   },
   "test_prospects": [
     {
-      "telegram_id": "@bohdanpytaichuk",
+      "telegram_id": "@buddah_lucid",
       "name": "Богдан",
       "role": "primary_test",
       "description": "Primary test account for manual testing"
