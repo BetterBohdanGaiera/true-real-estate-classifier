@@ -6,6 +6,8 @@ Integrates with Zoom API for meeting creation and Google Calendar for invitation
 Email validation with typo detection. Timezone-aware scheduling.
 """
 
+import hashlib
+import time as time_module
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
@@ -171,6 +173,76 @@ class SchedulingTool:
         self.zoom_service = zoom_service
         self.calendar_connector = calendar_connector
         self.rep_telegram_id = rep_telegram_id
+
+        # Duplicate availability detection: prospect_id -> (slots_hash, timestamp)
+        self._last_availability_sent: dict[str, tuple[str, float]] = {}
+
+    def _compute_slots_hash(self, slot_ids: list[str]) -> str:
+        """
+        Compute a deterministic hash of slot IDs for duplicate detection.
+
+        Sorts the IDs before hashing so the result is order-independent.
+
+        Args:
+            slot_ids: List of slot ID strings (e.g. ["20260211_1400", "20260211_1430"])
+
+        Returns:
+            MD5 hex digest representing the unique set of offered slots.
+        """
+        slots_str = ",".join(sorted(slot_ids))
+        return hashlib.md5(slots_str.encode()).hexdigest()
+
+    def is_duplicate_availability(
+        self,
+        prospect_id: str,
+        slot_ids: list[str],
+        window_seconds: float = 300.0,
+    ) -> bool:
+        """
+        Check if the same availability was already sent to this prospect recently.
+
+        Prevents the agent from spamming the same slot list multiple times within
+        a short window (default 5 minutes). Compares a hash of the offered slot IDs
+        against the last recorded send for the prospect.
+
+        Args:
+            prospect_id: Telegram ID of the prospect (as string)
+            slot_ids: List of slot IDs that would be sent now
+            window_seconds: De-duplication window in seconds (default: 300 = 5 min)
+
+        Returns:
+            True if this exact availability was already sent within the window,
+            False otherwise (meaning it is safe to send).
+        """
+        if not slot_ids:
+            return False
+
+        slots_hash = self._compute_slots_hash(slot_ids)
+
+        if prospect_id in self._last_availability_sent:
+            last_hash, last_time = self._last_availability_sent[prospect_id]
+            elapsed = time_module.time() - last_time
+
+            if last_hash == slots_hash and elapsed < window_seconds:
+                return True
+
+        return False
+
+    def record_availability_sent(self, prospect_id: str, slot_ids: list[str]) -> None:
+        """
+        Record that an availability list was sent to a prospect.
+
+        Should be called immediately after a successful availability message send.
+        Subsequent calls to ``is_duplicate_availability`` within the de-duplication
+        window will return True for the same slot set.
+
+        Args:
+            prospect_id: Telegram ID of the prospect (as string)
+            slot_ids: List of slot IDs that were sent
+        """
+        if slot_ids:
+            slots_hash = self._compute_slots_hash(slot_ids)
+            self._last_availability_sent[prospect_id] = (slots_hash, time_module.time())
 
     def _format_date_russian(self, target_date: date) -> str:
         """

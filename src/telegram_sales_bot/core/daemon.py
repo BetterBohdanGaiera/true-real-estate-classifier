@@ -35,6 +35,9 @@ from telegram_sales_bot.scheduling.tool import SchedulingTool
 from telegram_sales_bot.database.init import init_database
 from telegram_sales_bot.integrations.elevenlabs import VoiceTranscriber
 from telegram_sales_bot.integrations.media_detector import detect_media_type
+from telegram_sales_bot.temporal.transcription_cache import TranscriptionCache
+from telegram_sales_bot.temporal.chat_history_fetcher import TelegramChatHistoryFetcher
+from telegram_sales_bot.integrations.media_analyzer import MediaAnalyzer
 from telegram_sales_bot.integrations.google_calendar import CalendarConnector
 from telegram_sales_bot.integrations.zoom import ZoomBookingService
 from telegram_sales_bot.scheduling.db import (
@@ -85,6 +88,9 @@ class TelegramDaemon:
         self.bot_user_id = None  # Telegram ID of the bot account
         self.bot_username = None  # Username of the bot account
         self.message_buffer = None  # Initialized in initialize()
+        self.transcription_cache = None  # Initialized in initialize()
+        self.chat_history_fetcher = None  # Initialized in initialize()
+        self.media_analyzer = None  # Initialized in initialize()
         self.running = False
         self._offered_slots: dict[str, list[str]] = {}  # prospect_id -> offered slot_ids
         self.stats = {
@@ -253,6 +259,16 @@ class TelegramDaemon:
             self.voice_transcriber = None
             console.print(f"  [yellow]![/yellow] Voice transcription disabled: {e}")
 
+        # Initialize transcription cache
+        self.transcription_cache = TranscriptionCache()
+        console.print(f"  [green]✓[/green] Transcription cache initialized ({self.transcription_cache.size} cached entries)")
+
+        # Initialize media analyzer (uses voice_transcriber + Claude Code CLI for photos)
+        self.media_analyzer = MediaAnalyzer(voice_transcriber=self.voice_transcriber)
+        vision_status = "enabled" if self.media_analyzer.vision_enabled else "disabled"
+        transcription_status = "enabled" if self.media_analyzer.transcription_enabled else "disabled"
+        console.print(f"  [green]✓[/green] Media analyzer ready (vision: {vision_status}, transcription: {transcription_status})")
+
         # Initialize message buffer with flush callback
         self.message_buffer = MessageBuffer(
             timeout_range=self.config.batch_timeout_medium,
@@ -266,6 +282,14 @@ class TelegramDaemon:
         # Register message handler
         self._register_handlers()
         console.print(f"  [green]✓[/green] Message handlers registered")
+
+        # Initialize chat history fetcher (needs client + bot_user_id + transcription_cache)
+        self.chat_history_fetcher = TelegramChatHistoryFetcher(
+            client=self.client,
+            bot_user_id=self.bot_user_id,
+            transcription_cache=self.transcription_cache,
+        )
+        console.print(f"  [green]✓[/green] Chat history fetcher ready (Telegram API as context source)")
 
     def _load_config(self) -> AgentConfig:
         """Load agent configuration."""
@@ -375,8 +399,12 @@ class TelegramDaemon:
         console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {total_length} total chars[/dim]")
         await asyncio.sleep(reading_delay)
 
-        # 8. Get context and generate SINGLE response
-        context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+        # 8. Get context from Telegram API and generate SINGLE response
+        context = await self.chat_history_fetcher.get_conversation_context(
+            telegram_id=prospect.telegram_id,
+            prospect_name=prospect.name,
+            agent_name=self.config.agent_name,
+        )
 
         try:
             action = await self.agent.generate_response(
@@ -847,7 +875,7 @@ class TelegramDaemon:
             media_result = detect_media_type(event)
             message_text = event.text or ""
 
-            # Handle voice messages - transcribe to text
+            # Handle voice messages - transcribe to text + cache
             if media_result.media_type == "voice" and self.voice_transcriber:
                 try:
                     console.print(f"[cyan]Transcribing voice from {prospect.name}...[/cyan]")
@@ -855,20 +883,71 @@ class TelegramDaemon:
                         self.client, event.message
                     )
                     message_text = transcription.text
+                    # Cache voice transcription for history fetcher
+                    if self.transcription_cache and message_text:
+                        self.transcription_cache.store(
+                            chat_id=sender_id, message_id=event.id,
+                            media_type="voice", transcription=message_text,
+                        )
                     console.print(f"[green]Transcribed:[/green] {message_text[:100]}...")
                 except Exception as e:
                     console.print(f"[yellow]Transcription failed: {e}[/yellow]")
                     message_text = "[Голосовое сообщение]"
 
-            # Handle other media types
+            # Handle photo - analyze with Claude Vision + cache
+            elif media_result.media_type == "photo" and self.media_analyzer and self.media_analyzer.vision_enabled:
+                try:
+                    console.print(f"[cyan]Analyzing photo from {prospect.name}...[/cyan]")
+                    analyzed_text = await self.media_analyzer.analyze_photo(self.client, event.message)
+                    message_text = analyzed_text if analyzed_text else "[Фото]"
+                    # Cache for history fetcher
+                    if self.transcription_cache and analyzed_text:
+                        self.transcription_cache.store(
+                            chat_id=sender_id, message_id=event.id,
+                            media_type="photo", transcription=analyzed_text,
+                        )
+                    console.print(f"[green]Photo analyzed:[/green] {message_text[:100]}")
+                except Exception as e:
+                    console.print(f"[yellow]Photo analysis failed: {e}[/yellow]")
+                    message_text = "[Фото]"
+
+            # Handle video - extract audio + transcribe + cache
+            elif media_result.media_type == "video" and self.media_analyzer and self.media_analyzer.transcription_enabled:
+                try:
+                    console.print(f"[cyan]Analyzing video from {prospect.name}...[/cyan]")
+                    analyzed_text = await self.media_analyzer.analyze_video(self.client, event.message)
+                    message_text = analyzed_text if analyzed_text else "[Видео]"
+                    if self.transcription_cache and analyzed_text:
+                        self.transcription_cache.store(
+                            chat_id=sender_id, message_id=event.id,
+                            media_type="video", transcription=analyzed_text,
+                        )
+                    console.print(f"[green]Video transcribed:[/green] {message_text[:100]}")
+                except Exception as e:
+                    console.print(f"[yellow]Video analysis failed: {e}[/yellow]")
+                    message_text = "[Видео]"
+
+            # Handle video_note (circle) - extract audio + transcribe + cache
+            elif media_result.media_type == "video_note" and self.media_analyzer and self.media_analyzer.transcription_enabled:
+                try:
+                    console.print(f"[cyan]Transcribing video note from {prospect.name}...[/cyan]")
+                    analyzed_text = await self.media_analyzer.analyze_video_note(self.client, event.message)
+                    message_text = analyzed_text if analyzed_text else "[Кругляш]"
+                    if self.transcription_cache and analyzed_text:
+                        self.transcription_cache.store(
+                            chat_id=sender_id, message_id=event.id,
+                            media_type="video_note", transcription=analyzed_text,
+                        )
+                    console.print(f"[green]Video note transcribed:[/green] {message_text[:100]}")
+                except Exception as e:
+                    console.print(f"[yellow]Video note transcription failed: {e}[/yellow]")
+                    message_text = "[Кругляш]"
+
+            # Handle other media types (sticker, document, etc.) - placeholders
             elif media_result.has_media and not message_text:
                 if media_result.media_type == "sticker":
                     emoji = media_result.file_name or ""
                     message_text = f"[Стикер: {emoji}]"
-                elif media_result.media_type == "photo":
-                    message_text = "[Фото]"
-                elif media_result.media_type == "video":
-                    message_text = "[Видео]"
                 elif media_result.media_type == "document":
                     message_text = "[Документ]"
                 else:
@@ -943,8 +1022,12 @@ class TelegramDaemon:
                 console.print(f"[yellow]Outside working hours, skipping[/yellow]")
                 return
 
-            # Get conversation context
-            context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+            # Get conversation context from Telegram API
+            context = await self.chat_history_fetcher.get_conversation_context(
+                telegram_id=prospect.telegram_id,
+                prospect_name=prospect.name,
+                agent_name=self.config.agent_name,
+            )
 
             # Simulate reading delay (proportional to incoming message length)
             reading_delay = self.service._calculate_reading_delay(message_text)
@@ -1073,7 +1156,11 @@ class TelegramDaemon:
             try:
                 console.print(f"[cyan]Generating follow-up for {prospect.name}...[/cyan]")
 
-                context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+                context = await self.chat_history_fetcher.get_conversation_context(
+                    telegram_id=prospect.telegram_id,
+                    prospect_name=prospect.name,
+                    agent_name=self.config.agent_name,
+                )
                 action = await self.agent.generate_follow_up(prospect, context)
                 self._persist_session(prospect)
 
@@ -1143,8 +1230,12 @@ class TelegramDaemon:
             follow_up_intent = action.payload.get("follow_up_intent") or action.payload.get("message_template", "")  # Backward compat
             original_reason = action.payload.get("reason", "scheduled follow-up")
 
-            # Get fresh conversation context
-            context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
+            # Get fresh conversation context from Telegram API
+            context = await self.chat_history_fetcher.get_conversation_context(
+                telegram_id=prospect.telegram_id,
+                prospect_name=prospect.name,
+                agent_name=self.config.agent_name,
+            )
 
             # Generate contextual follow-up with intent guidance
             response = await self.agent.generate_follow_up(

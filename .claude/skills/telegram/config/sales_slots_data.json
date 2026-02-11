@@ -1,5 +1,5 @@
 {
-  "last_generated": "2026-02-11T10:52:47.686585",
+  "last_generated": "2026-02-11T12:03:22.345449",
   "slots": [
     {
       "id": "20260211_1230",
@@ -358,8 +358,8 @@
       "start_time": "17:00:00",
       "end_time": "17:30:00",
       "salesperson": "Эксперт True Real Estate",
-      "is_available": true,
-      "booked_by": null
+      "is_available": false,
+      "booked_by": "8503958942"
     },
     {
       "id": "20260212_1730",

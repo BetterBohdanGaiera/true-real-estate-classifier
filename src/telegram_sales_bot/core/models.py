@@ -88,6 +88,23 @@ class ConversationMessage(BaseModel):
     reply_to_id: Optional[int] = None  # Message ID this replies to
     reply_to_text: Optional[str] = None  # Cached text of replied message
 
+class TranscriptionCacheEntry(BaseModel):
+    """Cached transcription/analysis result for a media message."""
+    message_id: int
+    telegram_chat_id: int | str
+    media_type: str  # "voice", "video_note", "video", "photo"
+    transcription: str  # The transcribed text or photo description
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class MediaAnalysisResult(BaseModel):
+    """Result of media content analysis."""
+    media_type: MessageMediaType
+    original_text: str = ""        # Caption or original event.text
+    analyzed_text: str = ""        # Description from vision or transcription
+    combined_text: str = ""        # What to pass to the agent as message_text
+    analysis_method: str = ""      # "claude_vision", "elevenlabs_transcription", "ffmpeg+elevenlabs", "none"
+    analysis_duration_ms: Optional[float] = None
+
 class Prospect(BaseModel):
     """A prospect to reach out to."""
     telegram_id: int | str  # @username or numeric ID
@@ -266,7 +283,7 @@ class SchedulingResult(BaseModel):
 
 class AgentAction(BaseModel):
     """Action to take after processing a message."""
-    action: Literal["reply", "wait", "schedule", "check_availability", "schedule_followup", "escalate"]
+    action: Literal["reply", "wait", "schedule", "check_availability", "schedule_followup", "escalate", "_retry", "_retry_timeout"]
     message: Optional[str] = None
     reason: Optional[str] = None  # Why this action was chosen
     scheduling_data: Optional[dict] = None  # For scheduling actions: {"slot_id": "...", "topic": "..."}
@@ -313,7 +330,7 @@ class AgentConfig(BaseModel):
 
     # CLI agent configuration
     cli_model: str = "claude-opus-4-6"
-    cli_timeout: int = 60
+    cli_timeout: int = 105  # Increased from 60s to accommodate Opus model processing time
     cli_max_budget_usd: Optional[float] = None
 
 class FollowUpPollingConfig(BaseModel):

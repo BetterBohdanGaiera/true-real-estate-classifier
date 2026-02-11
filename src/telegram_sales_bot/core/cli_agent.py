@@ -253,8 +253,18 @@ class CLITelegramAgent:
 
         return config
 
-    def _parse_cli_result(self, result: TaskResult, prospect_id: str) -> AgentAction:
-        """Parse TaskResult into AgentAction and update session."""
+    def _parse_cli_result(
+        self, result: TaskResult, prospect_id: str, allow_timeout_retry: bool = True
+    ) -> AgentAction:
+        """Parse TaskResult into AgentAction and update session.
+
+        Args:
+            result: The TaskResult from CLI execution.
+            prospect_id: The prospect identifier.
+            allow_timeout_retry: If True, timeout errors return _retry_timeout signal
+                instead of immediate escalation. Set to False on retry attempts to
+                prevent infinite retry loops.
+        """
         # Update session ID for conversation continuity
         if result.session_id:
             self.sessions[prospect_id] = result.session_id
@@ -272,6 +282,19 @@ class CLITelegramAgent:
                 return AgentAction(
                     action="_retry",
                     reason=f"Stale session cleared for {prospect_id}, retry without resume"
+                )
+
+            # Handle timeout: signal retry if first attempt, escalate if already retried
+            if error_msg and ("timed out" in error_msg.lower() or "task timed out" in error_msg.lower()):
+                if allow_timeout_retry:
+                    return AgentAction(
+                        action="_retry_timeout",
+                        reason=f"CLI timed out for {prospect_id}, will retry once before escalating"
+                    )
+                # Second attempt also timed out - escalate
+                return AgentAction(
+                    action="escalate",
+                    reason=f"CLI execution timed out twice for {prospect_id}: {error_msg}"
                 )
 
             return AgentAction(
@@ -337,7 +360,14 @@ class CLITelegramAgent:
         )
 
     async def _execute_and_parse(self, user_prompt: str, prospect_id: str, **kwargs) -> AgentAction:
-        """Execute CLI call with retry on stale session."""
+        """Execute CLI call with retry on stale session and timeout.
+
+        Retry strategy:
+        1. Stale session (_retry): clears session cache and retries without resume.
+        2. Timeout (_retry_timeout): retries once with same config before escalating.
+
+        Both retry types are attempted at most once to prevent infinite loops.
+        """
         config = self._build_task_config(user_prompt, prospect_id, **kwargs)
         result = await self.executor.execute_with_config_async(config)
         action = self._parse_cli_result(result, prospect_id)
@@ -347,6 +377,13 @@ class CLITelegramAgent:
             config = self._build_task_config(user_prompt, prospect_id, **kwargs)
             result = await self.executor.execute_with_config_async(config)
             action = self._parse_cli_result(result, prospect_id)
+
+        # Retry once if CLI timed out (uses allow_timeout_retry=False to prevent infinite loop)
+        if action.action == "_retry_timeout":
+            print(f"[CLI timeout retry] Prospect {prospect_id}: CLI timed out, retrying once before escalating...")
+            config = self._build_task_config(user_prompt, prospect_id, **kwargs)
+            result = await self.executor.execute_with_config_async(config)
+            action = self._parse_cli_result(result, prospect_id, allow_timeout_retry=False)
 
         return action
 

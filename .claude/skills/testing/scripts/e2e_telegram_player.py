@@ -301,6 +301,54 @@ class E2ETelegramPlayer:
 
         return msg.id
 
+    async def send_file(
+        self,
+        agent_telegram_id: str,
+        file_path: str | Path,
+        caption: str = "",
+        voice: bool = False,
+        video_note: bool = False,
+    ) -> int:
+        """
+        Send a file (photo, voice, video note) to the agent.
+
+        Args:
+            agent_telegram_id: Agent's telegram ID (@username or numeric)
+            file_path: Path to the file to send
+            caption: Optional caption for the file
+            voice: If True, send as voice message (for .ogg files)
+            video_note: If True, send as video note (circle message)
+
+        Returns:
+            Message ID of sent message
+
+        Raises:
+            RuntimeError: If not connected
+            ValueError: If file does not exist
+
+        Example:
+            >>> await player.send_file("@BetterBohdan", "audio.ogg", voice=True)
+            >>> await player.send_file("@BetterBohdan", "photo.png")
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise ValueError(f"File not found: {file_path}")
+
+        entity = await self._resolve_entity(agent_telegram_id)
+
+        msg = await self.client.send_file(
+            entity,
+            file=str(file_path),
+            caption=caption,
+            voice=voice,
+            video_note=video_note,
+        )
+
+        return msg.id
+
     async def wait_for_response(
         self,
         agent_telegram_id: str,
