@@ -41,7 +41,7 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
 
 - This command orchestrates a fully automated end-to-end conversation test over real Telegram infrastructure
 - The test uses the E2ETelegramPlayer (`.claude/skills/testing/scripts/e2e_telegram_player.py`) to send messages AS @buddah_lucid to the running agent @BetterBohdan
-- The agent must already be running (either locally via daemon or via Docker) before this test starts
+- The test script connects Telethon FIRST and prints `E2E_TELETHON_READY` - Docker containers must be started AFTER this marker appears
 - The test follows a scripted conversation flow designed to validate NINE specific behavioral areas
 - Each test phase has explicit PASS/FAIL criteria - the test is deterministic, not exploratory
 - IMPORTANT: The conversation is conducted in Russian, matching the agent's configured language
@@ -85,16 +85,19 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
      "
      ```
 
-3. **Start the agent:**
+3. **Run the automated test script (connects Telethon FIRST):**
+   - The test script is at `E2E_AUTO_TEST_SCRIPT`
+   - Start the test script in a **background shell**: `PYTHONPATH=src uv run python .claude/skills/testing/scripts/run_e2e_auto_test.py`
+   - The script will connect to Telegram, clean chat history, then print `E2E_TELETHON_READY` to stdout
+   - **WAIT** for the `E2E_TELETHON_READY` marker in the background shell output before proceeding to step 4
+   - This ensures Telethon is connected and ready to receive messages BEFORE Docker starts
+
+4. **Start the agent (AFTER Telethon is ready):**
    - Start Docker containers in background: `docker compose -f deployment/docker/docker-compose.yml up --build -d postgres telegram-agent`
    - Wait 15 seconds for initialization
    - Verify containers are healthy: `docker compose -f deployment/docker/docker-compose.yml ps`
    - Begin tailing agent logs in a background shell for debugging: `docker compose -f deployment/docker/docker-compose.yml logs -f telegram-agent`
-
-4. **Run the automated test script:**
-   - The test script is at `E2E_AUTO_TEST_SCRIPT`
-   - Run with: `PYTHONPATH=src uv run python .claude/skills/testing/scripts/run_e2e_auto_test.py`
-   - The script produces structured JSON output for each phase
+   - The test script (already running in background from step 3) will automatically detect the agent's initial outreach in Phase 1
 
 5. **Phase 1 - Initial Contact & Snake Light Entry (PASS/FAIL):**
    - Wait up to 90 seconds for the agent to send the initial outreach message to @buddah_lucid

@@ -15,7 +15,7 @@ The debounce pattern works as follows:
 import asyncio
 import logging
 import random
-from datetime import datetime, timezone, timezone
+from datetime import datetime, timezone
 from typing import Callable, Optional, Awaitable
 
 from pydantic import BaseModel, Field
@@ -103,6 +103,7 @@ class MessageBuffer:
         self._buffers: dict[str, list[BufferedMessage]] = {}
         self._timers: dict[str, asyncio.Task] = {}
         self._first_message_time: dict[str, datetime] = {}  # Track first message timestamp
+        self._generations: dict[str, int] = {}  # Generation counter per prospect to prevent stale flushes
         self._timeout_range = timeout_range
         self._flush_callback = flush_callback
         self._max_messages = max_messages
@@ -135,6 +136,10 @@ class MessageBuffer:
 
         # Add message to buffer
         self._buffers[prospect_id].append(message)
+
+        # Increment generation to invalidate any in-flight timers
+        self._generations[prospect_id] = self._generations.get(prospect_id, 0) + 1
+
         logger.debug(
             f"Added message {message.message_id} to buffer for {prospect_id}, "
             f"buffer size: {len(self._buffers[prospect_id])}"
@@ -193,10 +198,17 @@ class MessageBuffer:
         timeout = random.uniform(self._timeout_range[0], self._timeout_range[1])
         logger.debug(f"Starting timer for {prospect_id}: {timeout:.2f}s")
 
+        # Capture current generation for this timer
+        current_gen = self._generations.get(prospect_id, 0)
+
         # Create async task for the timer
         async def timer_task():
             try:
                 await asyncio.sleep(timeout)
+                # Check if this timer is still the current one
+                if self._generations.get(prospect_id, 0) != current_gen:
+                    logger.debug(f"Timer for {prospect_id} is stale (gen {current_gen} vs {self._generations.get(prospect_id, 0)}), skipping flush")
+                    return
                 await self._flush_buffer(prospect_id)
             except asyncio.CancelledError:
                 logger.debug(f"Timer cancelled for {prospect_id}")
@@ -224,6 +236,7 @@ class MessageBuffer:
 
         # Clean up tracking data
         self._first_message_time.pop(prospect_id, None)
+        self._generations.pop(prospect_id, None)
         timer = self._timers.pop(prospect_id, None)
         if timer and not timer.done():
             timer.cancel()
@@ -371,6 +384,7 @@ class MessageBuffer:
         """
         messages = self._buffers.pop(prospect_id, [])
         self._first_message_time.pop(prospect_id, None)
+        self._generations.pop(prospect_id, None)
 
         if prospect_id in self._timers:
             self._timers[prospect_id].cancel()

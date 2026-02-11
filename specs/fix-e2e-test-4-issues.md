@@ -1,59 +1,66 @@
-# Fix 4 E2E Test Issues (2026-02-10 Test Run)
+# Fix 4 E2E Test Issues (2026-02-10 Test Run #2)
 
 ## Objective
 
-Fix four issues found during E2E automated conversation test. Test results: `.claude/skills/testing/scripts/e2e_test_results.json`.
+Fix four issues found during the latest E2E automated conversation test (8/9 passed).
+Test results: `.claude/skills/testing/scripts/e2e_test_results.json`.
 
-## Issue 1: Phase 1 Race Condition (Test Infrastructure)
+## Issue 1: Auto-booking without explicit client confirmation (CRITICAL)
 
-**Root Cause:** `run_e2e_auto_test.py` line 735 calls `delete_chat_history(player)` AFTER Docker daemon starts. The daemon sends initial outreach immediately, then the test deletes it, then Phase 1 waits 150s for a message that never comes.
+**Problem:** When client's requested time (10:00 Warsaw) was unavailable, agent offered 3 alternative slots (08:30, 09:00, 10:30). Client replied "Да, записывайте!" and the system auto-booked 08:30 (first slot) WITHOUT client choosing a specific one.
 
-**Fix:** Remove `delete_chat_history()` call and the sleep at lines 735-736. The calling workflow already handles cleanup before Docker starts.
-
-**File:** `.claude/skills/testing/scripts/run_e2e_auto_test.py`
-
-## Issue 2: Agent Doesn't Auto-Book First Slot on Confirmation
-
-**Root Cause:** System prompt has no rule for when client says "да/записывайте" after seeing 2-3 slots. LLM re-asks instead of booking.
-
-**Fix:** Add explicit rule to system prompt: when client gives generic confirmation after 2-3 slots shown, auto-book the FIRST slot.
-
-**File:** `.claude/skills/telegram/config/agent_system_prompt.md` (add after line 156)
-
-## Issue 3: Email Not Persisted in prospects.json
-
-**Root Cause:** Email is only persisted in the `schedule` action handler (daemon.py line 578). The `check_availability` handler doesn't persist email, and the system prompt doesn't instruct the agent to include email in `check_availability` scheduling_data.
+**Root Causes:**
+1. **System prompt (agent_system_prompt.md:158-168):** Auto-booking rule says "Бронируй ПЕРВЫЙ предложенный слот" when client confirms after 2-3 slots. Wrong when alternatives were offered because requested time was busy.
+2. **Daemon (daemon.py:541-546):** Auto-corrects invalid slot_id to `offered[0]` silently.
 
 **Fix:**
-1. Update system prompt line 189 to include `email` in `check_availability` scheduling_data
-2. Add email persistence in daemon.py's `check_availability` handler (around line 442)
+1. `agent_system_prompt.md`: Change auto-booking rule to distinguish between confirmed-available slot (auto-book OK) vs alternatives (must clarify which one)
+2. `daemon.py`: When auto-correcting, send alternatives back instead of silently booking first
 
-**Files:** `agent_system_prompt.md`, `daemon.py`
+## Issue 2: Timezone stored as Europe/Kaliningrad instead of Europe/Warsaw
 
-## Issue 5: Calendar Event at Wrong Time
+**Problem:** Client said "я сейчас в Варшаве" but system stored Europe/Kaliningrad.
 
-**Root Cause:** LLM hallucinates wrong Bali-time slot_id when converting from client timezone. The daemon trusts the slot_id blindly. Example: agent offered 08:00 Warsaw (=15:00 Bali) but LLM produced slot_id `20260211_1800` (=18:00 Bali = 11:00 Warsaw).
+**Root Cause:** In daemon.py check_availability handler (lines 399-443), heuristic `estimate_timezone()` runs and stores its guess BEFORE agent-provided `client_timezone` override. The heuristic picks Kaliningrad (UTC+2) from message patterns, persists it, then agent's "Europe/Warsaw" overrides the runtime variable but NOT the stored value.
 
-**Fix:** Track offered slot IDs and validate before booking:
-1. Modify `confirm_time_slot()` and `get_available_times()` to return `tuple[str, list[str]]` (text + slot IDs)
-2. Track offered slots in daemon per prospect (`self._offered_slots`)
-3. Validate slot_id in `schedule` handler, auto-correct to first offered if mismatch
+**Fix:** Move agent-provided timezone check BEFORE heuristic estimation in both `check_availability` and `schedule` handlers. If agent provides timezone, store with confidence=1.0 and skip heuristics.
 
-**Files:** `scheduling/tool.py`, `daemon.py`
+**Files:** `src/telegram_sales_bot/core/daemon.py`
+
+## Issue 3: MessageBuffer duplicate firing on multi-message burst
+
+**Problem:** Agent sent TWO responses to a 4-message burst. First correct, second near-duplicate 4s later.
+
+**Root Cause:** Race condition in `message_buffer.py`. When `add_message()` calls `cancel()` on existing timer, the timer task may have already woken from `asyncio.sleep()` and started `_flush_buffer()`. Cancel doesn't affect a task already past its sleep. Both old timer's flush and new timer's flush execute.
+
+**Fix:** Add generation counter. Each `add_message` increments generation. Timer task checks if its generation matches current before flushing.
+
+**Files:** `src/telegram_sales_bot/temporal/message_buffer.py`
+
+## Issue 4: Phase 1 race condition in test script
+
+**Problem:** Test script takes ~150s to connect via Telethon, Docker daemon sends outreach in ~30s, message is missed.
+
+**Root Cause:** Test script structure: connect to Telegram THEN wait for outreach. But Docker is already running.
+
+**Fix:** Add a "ready" signal mechanism. Test script outputs `E2E_READY` marker after Telethon connects. The calling workflow starts Docker containers only after seeing this marker. Also restructure `main()` to clearly separate connection from test phases.
+
+**Files:** `.claude/skills/testing/scripts/run_e2e_auto_test.py`
 
 ## Implementation Batches
 
-**Batch 1 (independent):**
-- `.claude/skills/testing/scripts/run_e2e_auto_test.py` - Issue 1
-- `.claude/skills/telegram/config/agent_system_prompt.md` - Issues 2, 3
+**Batch 1 (all independent, parallel):**
+- `agent_system_prompt.md` - Issue 1 prompt fix
+- `message_buffer.py` - Issue 3 duplicate fix
+- `run_e2e_auto_test.py` - Issue 4 test script fix
 
-**Batch 2 (sequential - tool.py must change before daemon.py):**
-- `src/telegram_sales_bot/scheduling/tool.py` - Issue 5 (return offered IDs)
-- `src/telegram_sales_bot/core/daemon.py` - Issues 3, 5 (email persist + slot validation)
+**Batch 2 (after Batch 1):**
+- `daemon.py` - Issues 1 + 2 (auto-booking safety + timezone priority)
 
 ## Acceptance Criteria
 
-1. Phase 1: E2E test receives initial outreach without race condition
-2. Phase 8: Agent auto-books first slot on generic confirmation
-3. Email persisted in prospects.json after check_availability
-4. Calendar events only at times actually offered to client
+1. When client says generic "да" after MULTIPLE alternatives → agent asks which slot specifically
+2. When client says generic "да" after ONE confirmed slot → auto-book that slot
+3. Client-stated city overrides heuristic timezone detection
+4. Multi-message burst produces exactly ONE batched response
+5. Test script connects to Telegram before Docker starts

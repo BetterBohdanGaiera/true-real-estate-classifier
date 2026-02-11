@@ -796,13 +796,14 @@ async def main():
         me = await player.get_me()
         print(f"Connected as: {me['first_name']} (@{me['username']})")
 
-        results = []
+        # Clean chat history BEFORE Docker starts to ensure fresh conversation
+        await delete_chat_history(player)
 
-        # NOTE: Chat cleanup and prospect reset must happen BEFORE the daemon
-        # Docker container starts. The daemon sends initial outreach immediately
-        # on startup, so deleting chat history here would race against the daemon
-        # and delete the initial message Phase 1 is waiting for.
-        # The calling workflow (telegram_conversation_manual_test) handles pre-cleanup.
+        # Signal that Telethon is connected and ready to receive messages.
+        # The calling workflow should wait for this marker before starting Docker containers.
+        print("E2E_TELETHON_READY", flush=True)
+
+        results = []
 
         # Phase 1: Initial Contact
         r1 = await phase1_initial_contact(player)

@@ -1083,8 +1083,17 @@ class SchedulingTool:
         if not available_slots:
             return "К сожалению, нет свободных слотов в ближайшие дни.", []
 
-        # Format up to 3 nearest alternatives
-        time_str = target_time.strftime("%H:%M")
+        # Format requested time in CLIENT's timezone (not Bali)
+        if client_timezone:
+            requested_dt = datetime.combine(target_date, target_time, tzinfo=BALI_TZ)
+            client_requested_dt = self._convert_to_client_timezone(requested_dt, client_timezone)
+            if client_requested_dt:
+                time_str = client_requested_dt.strftime("%H:%M")
+            else:
+                time_str = target_time.strftime("%H:%M")
+        else:
+            time_str = target_time.strftime("%H:%M")
+
         alternatives = available_slots[:3]
         offered_ids = [alt_slot.id for alt_slot in alternatives]
 

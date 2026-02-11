@@ -10,6 +10,7 @@ structured output via JSON schema, budget control, and multi-turn context.
 """
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -124,13 +125,45 @@ class CLITelegramAgent:
         return result
 
     def _sanitize_output(self, text: str) -> str:
-        """Remove em-dashes and en-dashes from LLM output."""
+        """Remove em-dashes, en-dashes, and trailing periods from LLM output."""
         if not text:
             return text
         result = text.replace("\u2014", " - ").replace("\u2013", " - ")
         while "  " in result:
             result = result.replace("  ", " ")
+        result = self._remove_trailing_periods(result)
         return result
+
+    def _remove_trailing_periods(self, text: str) -> str:
+        """Strip trailing period from each line, preserving ellipsis, decimals, and URLs.
+
+        Preserves:
+        - Ellipsis: ... or ...
+        - Decimals at end: 300.000, 8.5
+        - URL-like patterns: .com, .org, .ru
+        """
+        lines = text.split("\n")
+        cleaned = []
+        for line in lines:
+            stripped = line.rstrip()
+            if not stripped.endswith("."):
+                cleaned.append(line)
+                continue
+            # Preserve ellipsis (... or ...)
+            if stripped.endswith("...") or stripped.endswith("\u2026"):
+                cleaned.append(line)
+                continue
+            # Preserve decimals at end (e.g. "300.000", "8.5")
+            if re.search(r'\d\.\d+$', stripped):
+                cleaned.append(line)
+                continue
+            # Preserve URL-like patterns (e.g. ".com", ".org", ".ru")
+            if re.search(r'\.\w{2,}$', stripped):
+                cleaned.append(line)
+                continue
+            # Remove the trailing period
+            cleaned.append(line.rstrip()[:-1] + line[len(line.rstrip()):])
+        return "\n".join(cleaned)
 
     def _get_current_bali_time(self) -> str:
         """Get current time in Bali timezone (UTC+8) as formatted string."""
@@ -260,11 +293,22 @@ class CLITelegramAgent:
 
         # Case 1: parsed_json has a "result" key with the actual response string
         if "result" in parsed and isinstance(parsed["result"], str):
+            result_text = parsed["result"]
+            # Strip markdown code fences if present (Claude sometimes wraps JSON in ```json ... ```)
+            result_text = result_text.strip()
+            if result_text.startswith("```json"):
+                result_text = result_text[7:]
+            elif result_text.startswith("```"):
+                result_text = result_text[3:]
+            if result_text.endswith("```"):
+                result_text = result_text[:-3]
+            result_text = result_text.strip()
+
             try:
-                agent_data = json.loads(parsed["result"])
+                agent_data = json.loads(result_text)
             except json.JSONDecodeError:
                 # Try to find JSON in the result string
-                text = parsed["result"]
+                text = result_text
                 start = text.find('{')
                 end = text.rfind('}')
                 if start != -1 and end != -1:

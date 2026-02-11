@@ -393,54 +393,82 @@ class TelegramDaemon:
         except Exception as e:
             console.print(f"[red]Error processing batch: {e}[/red]")
 
+    def _resolve_client_timezone(
+        self, prospect, agent_client_tz: Optional[str] = None, label: str = ""
+    ) -> Optional[str]:
+        """
+        Resolve client timezone with priority: agent-provided > stored > heuristic.
+
+        When the agent provides a timezone (from the client explicitly naming a city),
+        it is stored with confidence=1.0 and overrides everything else.
+
+        Args:
+            prospect: Prospect object with estimated_timezone and timezone_confidence
+            agent_client_tz: Timezone string from scheduling_data.client_timezone
+            label: Context label for logging (e.g., "for booking")
+
+        Returns:
+            IANA timezone string or None if no timezone could be determined
+        """
+        log_suffix = f" {label}" if label else ""
+
+        if agent_client_tz:
+            # Agent explicitly provided timezone (client stated their city)
+            self.prospect_manager.update_prospect_timezone(
+                prospect.telegram_id,
+                agent_client_tz,
+                1.0
+            )
+            prospect.estimated_timezone = agent_client_tz
+            prospect.timezone_confidence = 1.0
+            console.print(f"[blue]Using agent-provided timezone{log_suffix}: {agent_client_tz} (confidence: 1.0)[/blue]")
+            return agent_client_tz
+
+        if prospect.estimated_timezone and prospect.timezone_confidence >= 0.7:
+            console.print(f"[dim]Using stored timezone{log_suffix}: {prospect.estimated_timezone}[/dim]")
+            return prospect.estimated_timezone
+
+        # Fall back to heuristic estimation
+        message_timestamps = [
+            msg.timestamp for msg in prospect.conversation_history
+            if msg.timestamp and msg.sender == "prospect"
+        ]
+        if message_timestamps:
+            tz_estimate = estimate_timezone(message_timestamps)
+            if tz_estimate.confidence > 0.7:
+                self.prospect_manager.update_prospect_timezone(
+                    prospect.telegram_id,
+                    tz_estimate.timezone,
+                    tz_estimate.confidence
+                )
+                prospect.estimated_timezone = tz_estimate.timezone
+                prospect.timezone_confidence = tz_estimate.confidence
+                console.print(
+                    f"[blue]Detected timezone{log_suffix}: {tz_estimate.timezone} "
+                    f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
+                )
+                return tz_estimate.timezone
+            else:
+                console.print(
+                    f"[dim]Timezone estimate low confidence{log_suffix}: {tz_estimate.timezone} "
+                    f"({tz_estimate.confidence:.2f})[/dim]"
+                )
+
+        return None
+
     async def _handle_action(self, prospect, action, context):
         """Handle agent action (extracted from handle_incoming for reuse)."""
         # Handle check_availability action
         if action.action == "check_availability":
-            # Detect client timezone if not already known with high confidence
-            client_tz = None
-            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
-                # Estimate from conversation history
-                message_timestamps = [
-                    msg.timestamp for msg in prospect.conversation_history
-                    if msg.timestamp and msg.sender == "prospect"
-                ]
-                if message_timestamps:
-                    tz_estimate = estimate_timezone(message_timestamps)
-
-                    if tz_estimate.confidence > 0.7:
-                        # Store in prospect record
-                        self.prospect_manager.update_prospect_timezone(
-                            prospect.telegram_id,
-                            tz_estimate.timezone,
-                            tz_estimate.confidence
-                        )
-                        prospect.estimated_timezone = tz_estimate.timezone
-                        prospect.timezone_confidence = tz_estimate.confidence
-                        console.print(
-                            f"[blue]Detected timezone: {tz_estimate.timezone} "
-                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
-                        )
-                        client_tz = tz_estimate.timezone
-                    else:
-                        console.print(
-                            f"[dim]Timezone estimate low confidence: {tz_estimate.timezone} "
-                            f"({tz_estimate.confidence:.2f})[/dim]"
-                        )
-            else:
-                # Use existing high-confidence timezone
-                client_tz = prospect.estimated_timezone
-                console.print(f"[dim]Using stored timezone: {client_tz}[/dim]")
-
-            # Check if agent provided a specific preferred time (user already named a time)
             sched_data = action.scheduling_data or {}
             preferred_time_str = sched_data.get("preferred_time")
             preferred_date_str = sched_data.get("preferred_date")
-            agent_client_tz = sched_data.get("client_timezone")
 
-            # Override detected timezone with agent-provided one if available
-            if agent_client_tz:
-                client_tz = agent_client_tz
+            # Resolve timezone: agent-provided > stored > heuristic
+            client_tz = self._resolve_client_timezone(
+                prospect,
+                agent_client_tz=sched_data.get("client_timezone"),
+            )
 
             # Persist email early if provided in scheduling_data (Issue 3 fix)
             sched_email = sched_data.get("email")
@@ -535,15 +563,56 @@ class TelegramDaemon:
         elif action.action == "schedule" and action.scheduling_data:
             slot_id = action.scheduling_data.get("slot_id")
 
-            # Validate slot_id was actually offered to client (Issue 5 fix)
+            # Validate slot_id was actually offered to client
             prospect_key = str(prospect.telegram_id)
             offered = self._offered_slots.get(prospect_key, [])
             if offered and slot_id not in offered:
-                console.print(
-                    f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
-                    f"Offered: {offered}. Auto-correcting to first offered slot: {offered[0]}[/yellow]"
-                )
-                slot_id = offered[0]
+                if len(offered) == 1:
+                    # Only ONE slot was offered - safe to auto-correct
+                    console.print(
+                        f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
+                        f"Auto-correcting to the only offered slot: {offered[0]}[/yellow]"
+                    )
+                    slot_id = offered[0]
+                else:
+                    # MULTIPLE slots were offered - ask client to choose
+                    console.print(
+                        f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
+                        f"Multiple alternatives exist ({len(offered)} slots) - asking client to choose.[/yellow]"
+                    )
+                    # Re-send alternatives to client
+                    alt_texts = []
+                    for alt_id in offered[:3]:
+                        # Extract time from slot ID format YYYYMMDD_HHMM
+                        try:
+                            time_part = alt_id.split("_")[1]
+                            h, m = int(time_part[:2]), int(time_part[2:])
+                            from datetime import time as dt_time, date as dt_date, datetime as dt_datetime
+                            from zoneinfo import ZoneInfo
+                            date_part = alt_id.split("_")[0]
+                            slot_date = dt_date(int(date_part[:4]), int(date_part[4:6]), int(date_part[6:8]))
+                            slot_time = dt_time(h, m)
+                            # Convert to client timezone if available
+                            client_tz_for_display = action.scheduling_data.get("client_timezone") or prospect.estimated_timezone
+                            if client_tz_for_display:
+                                bali_dt = dt_datetime.combine(slot_date, slot_time, tzinfo=ZoneInfo("Asia/Makassar"))
+                                client_dt = bali_dt.astimezone(ZoneInfo(client_tz_for_display))
+                                alt_texts.append(client_dt.strftime("%H:%M"))
+                            else:
+                                alt_texts.append(f"{h:02d}:{m:02d}")
+                        except Exception:
+                            alt_texts.append(alt_id)
+
+                    clarify_msg = f"На какое именно время записать - {', '.join(alt_texts[:-1])} или {alt_texts[-1]}?" if len(alt_texts) > 1 else f"Записать на {alt_texts[0]}?"
+                    send_result = await self.service.send_message(prospect.telegram_id, clarify_msg)
+                    if send_result.get("sent"):
+                        self.stats["messages_sent"] += 1
+                        self.prospect_manager.record_agent_message(
+                            prospect.telegram_id,
+                            send_result["message_id"],
+                            clarify_msg
+                        )
+                    return  # Don't proceed with booking - wait for client to choose
 
             client_email = action.scheduling_data.get("email", "")
             topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
@@ -567,40 +636,12 @@ class TelegramDaemon:
                 console.print(f"[yellow]Schedule rejected - no email provided[/yellow]")
                 return
 
-            # Detect client timezone if not already known (for meeting invite timezone info)
-            client_tz = None
-            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
-                # Estimate from conversation history
-                message_timestamps = [
-                    msg.timestamp for msg in prospect.conversation_history
-                    if msg.timestamp and msg.sender == "prospect"
-                ]
-                if message_timestamps:
-                    tz_estimate = estimate_timezone(message_timestamps)
-
-                    if tz_estimate.confidence > 0.7:
-                        # Store in prospect record
-                        self.prospect_manager.update_prospect_timezone(
-                            prospect.telegram_id,
-                            tz_estimate.timezone,
-                            tz_estimate.confidence
-                        )
-                        prospect.estimated_timezone = tz_estimate.timezone
-                        prospect.timezone_confidence = tz_estimate.confidence
-                        console.print(
-                            f"[blue]Detected timezone for booking: {tz_estimate.timezone} "
-                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
-                        )
-                        client_tz = tz_estimate.timezone
-            else:
-                client_tz = prospect.estimated_timezone
-                console.print(f"[dim]Using stored timezone for booking: {client_tz}[/dim]")
-
-            # Override with agent-provided timezone if available (same as check_availability)
-            agent_client_tz = action.scheduling_data.get("client_timezone")
-            if agent_client_tz:
-                client_tz = agent_client_tz
-                console.print(f"[blue]Using agent-provided timezone for booking: {client_tz}[/blue]")
+            # Resolve timezone: agent-provided > stored > heuristic
+            client_tz = self._resolve_client_timezone(
+                prospect,
+                agent_client_tz=action.scheduling_data.get("client_timezone"),
+                label="for booking",
+            )
 
             # Store email in prospect record
             self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
