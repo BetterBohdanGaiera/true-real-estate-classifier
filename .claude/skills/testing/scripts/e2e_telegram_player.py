@@ -301,54 +301,6 @@ class E2ETelegramPlayer:
 
         return msg.id
 
-    async def send_file(
-        self,
-        agent_telegram_id: str,
-        file_path: str | Path,
-        caption: str = "",
-        voice: bool = False,
-        video_note: bool = False,
-    ) -> int:
-        """
-        Send a file (photo, voice, video note) to the agent.
-
-        Args:
-            agent_telegram_id: Agent's telegram ID (@username or numeric)
-            file_path: Path to the file to send
-            caption: Optional caption for the file
-            voice: If True, send as voice message (for .ogg files)
-            video_note: If True, send as video note (circle message)
-
-        Returns:
-            Message ID of sent message
-
-        Raises:
-            RuntimeError: If not connected
-            ValueError: If file does not exist
-
-        Example:
-            >>> await player.send_file("@BetterBohdan", "audio.ogg", voice=True)
-            >>> await player.send_file("@BetterBohdan", "photo.png")
-        """
-        if not self._connected:
-            raise RuntimeError("Not connected. Call connect() first.")
-
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise ValueError(f"File not found: {file_path}")
-
-        entity = await self._resolve_entity(agent_telegram_id)
-
-        msg = await self.client.send_file(
-            entity,
-            file=str(file_path),
-            caption=caption,
-            voice=voice,
-            video_note=video_note,
-        )
-
-        return msg.id
-
     async def wait_for_response(
         self,
         agent_telegram_id: str,
@@ -430,6 +382,89 @@ class E2ETelegramPlayer:
 
         return None  # Timeout
 
+    async def wait_for_responses(
+        self,
+        agent_telegram_id: str,
+        timeout: float = 60.0,
+        poll_interval: float = 1.0,
+        settle_time: float = 5.0,
+    ) -> list[str]:
+        """
+        Wait for agent to respond, collecting multiple messages within a settle window.
+
+        Unlike wait_for_response() which returns the first message, this method
+        collects ALL agent messages within a time window. After the first message
+        arrives, it continues polling for additional messages for settle_time seconds.
+        Each new message resets the settle timer.
+
+        Args:
+            agent_telegram_id: Agent's telegram ID
+            timeout: Max seconds to wait for the FIRST message (default: 60.0)
+            poll_interval: How often to check for new messages (default: 1.0)
+            settle_time: Seconds to wait after last message before returning (default: 5.0)
+
+        Returns:
+            List of agent response texts (empty list if timeout)
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        entity = await self._resolve_entity(agent_telegram_id)
+        current_last_id = self._last_message_ids.get(agent_telegram_id, 0)
+
+        if current_last_id == 0:
+            async for msg in self.client.iter_messages(entity, limit=1):
+                current_last_id = msg.id
+                break
+            self._last_message_ids[agent_telegram_id] = current_last_id
+
+        collected: list[str] = []
+        start_time = datetime.now()
+        last_message_time: Optional[datetime] = None
+        me = await self.client.get_me()
+
+        while True:
+            elapsed = (datetime.now() - start_time).total_seconds()
+
+            # If no messages collected yet, check against main timeout
+            if not collected and elapsed >= timeout:
+                break
+
+            # If messages collected, check settle time
+            if collected and last_message_time:
+                since_last = (datetime.now() - last_message_time).total_seconds()
+                if since_last >= settle_time:
+                    break
+
+            # Also enforce an absolute timeout (timeout + settle_time) to prevent infinite loop
+            if elapsed >= timeout + settle_time:
+                break
+
+            try:
+                async for msg in self.client.iter_messages(entity, limit=10):
+                    if msg.id > current_last_id and msg.sender_id != me.id:
+                        collected.append(msg.text or "")
+                        current_last_id = msg.id
+                        last_message_time = datetime.now()
+                        self._last_message_ids[agent_telegram_id] = msg.id
+
+                        # Mark as read
+                        try:
+                            await self.client(ReadHistoryRequest(
+                                peer=entity,
+                                max_id=msg.id
+                            ))
+                        except Exception:
+                            pass
+                    elif msg.id <= current_last_id:
+                        break
+            except Exception:
+                pass
+
+            await asyncio.sleep(poll_interval)
+
+        return collected
+
     async def send_batch(
         self,
         agent_telegram_id: str,
@@ -499,6 +534,80 @@ class E2ETelegramPlayer:
                     await asyncio.sleep(delay)
 
         return message_ids
+
+    async def send_file(
+        self,
+        agent_telegram_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+    ) -> int:
+        """
+        Send a file (photo, document, audio, video) to the agent.
+
+        Telethon automatically detects the file type and sends it as
+        the appropriate media type (photo, document, etc.).
+
+        Args:
+            agent_telegram_id: Agent's telegram ID (@username or numeric)
+            file_path: Path to the file to send
+            caption: Optional text caption to accompany the file
+
+        Returns:
+            Message ID of sent message
+
+        Raises:
+            RuntimeError: If not connected
+            FileNotFoundError: If file_path doesn't exist
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        entity = await self._resolve_entity(agent_telegram_id)
+        msg = await self.client.send_file(
+            entity,
+            str(path),
+            caption=caption,
+            force_document=False,  # Let Telethon auto-detect type
+        )
+        return msg.id
+
+    async def send_voice(
+        self,
+        agent_telegram_id: str,
+        file_path: str,
+    ) -> int:
+        """
+        Send a voice message to the agent.
+
+        Args:
+            agent_telegram_id: Agent's telegram ID (@username or numeric)
+            file_path: Path to the audio file (OGG preferred)
+
+        Returns:
+            Message ID of sent message
+
+        Raises:
+            RuntimeError: If not connected
+            FileNotFoundError: If file_path doesn't exist
+        """
+        if not self._connected:
+            raise RuntimeError("Not connected. Call connect() first.")
+
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        entity = await self._resolve_entity(agent_telegram_id)
+        msg = await self.client.send_file(
+            entity,
+            str(path),
+            voice_note=True,  # Send as voice message, not audio file
+        )
+        return msg.id
 
     async def get_me(self) -> dict:
         """

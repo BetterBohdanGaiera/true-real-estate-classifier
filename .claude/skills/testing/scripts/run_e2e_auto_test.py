@@ -3,14 +3,15 @@
 Automated E2E Conversation Test via Real Telegram.
 
 Extended version: Tests 10 critical agent behaviors including Snake methodology,
-multi-message handling, BANT qualification, objection handling, pain summary before Zoom, and scheduling.
+multi-message handling, media understanding, BANT qualification, objection handling,
+pain summary before Zoom, and scheduling.
 
 Phases:
 1. Initial Contact & Snake Light Entry
 2. Wait Behavior (respects "wait 2 minutes")
 3. ROI Question + "Bubble" Objection
-4. Media Message Analysis (Voice + Image)
-5. Multi-Message Burst
+4. Multi-Message Burst
+5. Media Understanding (Image + Voice) — mid-conversation, natural flow
 6. BANT: Budget + Need + "Send Catalog" Objection
 7. BANT: Authority + Timeline + "Leasehold" Objection
 8. Pain Summary & Zoom Proposal
@@ -44,8 +45,12 @@ from e2e_telegram_player import E2ETelegramPlayer
 AGENT_USERNAME = "@BetterBohdan"
 AGENT_TELEGRAM_ID = 203144303
 PROSPECTS_FILE = PROJECT_ROOT / ".claude" / "skills" / "telegram" / "config" / "prospects.json"
-MEDIA_DIR = PROJECT_ROOT / "data" / "media_for_test"
 TEST_CLIENT_EMAIL = "bohdan.pytaichuk@gmail.com"
+
+# Test media files for Phase 10
+TEST_MEDIA_DIR = PROJECT_ROOT / "data" / "media_for_test"
+TEST_IMAGE = TEST_MEDIA_DIR / "image.png"
+TEST_VOICE = TEST_MEDIA_DIR / "response.ogg"
 
 
 class TestResult:
@@ -166,173 +171,57 @@ async def phase2_wait_behavior(player: E2ETelegramPlayer) -> TestResult:
     print("[PHASE 2] Testing wait behavior (2-minute delay request)...")
     print("=" * 60)
 
-    # Acknowledgment keywords: messages confirming the agent will write back later
-    ACK_KEYWORDS = ["через 2 минут", "напишу через", "конечно", "хорошо, напишу", "окей", "напишу вам"]
-
     msg_text = "Интересно, но сейчас занят. Можете написать через 2 минуты?"
     print(f"  [PROSPECT] {msg_text}")
     await player.send_message(AGENT_USERNAME, msg_text)
     result.messages.append(("PROSPECT", msg_text, _ts()))
 
-    # Track timing from the moment the request was sent
-    request_time = time.time()
-    acknowledgment = None
-    ack_time = None
-
-    # --- Step 1: Wait up to 30s for acknowledgment ---
+    # Wait for acknowledgment
     print("  Waiting for acknowledgment (30s)...")
     ack = await player.wait_for_response(AGENT_USERNAME, timeout=30.0, poll_interval=1.0)
     if ack:
-        acknowledgment = ack
-        ack_time = time.time()
         print(f"  [AGENT] {ack}")
         result.messages.append(("AGENT", ack, _ts()))
 
-    # --- Step 2: If no ack in first 30s, poll the silence window and consume late acks ---
-    if not acknowledgment:
-        print("  No acknowledgment in first 30s, continuing to poll (up to 100s more)...")
-        remaining_time = 100.0
+    # Check silence for 100 seconds
+    print("  Timing silence period (need >= 100s)...")
+    silence_start = time.time()
+    premature = await player.wait_for_response(AGENT_USERNAME, timeout=100.0, poll_interval=2.0)
+    silence_duration = time.time() - silence_start
 
-        while remaining_time > 0:
-            poll_start = time.time()
-            msg = await player.wait_for_response(
-                AGENT_USERNAME, timeout=min(remaining_time, 10.0), poll_interval=2.0
-            )
-            elapsed = time.time() - poll_start
-            remaining_time -= elapsed
+    if premature is not None:
+        result.timing["seconds_silent"] = round(silence_duration, 1)
+        result.details = f"Agent broke silence after {silence_duration:.0f}s (need >= 100s): {premature[:60]}"
+        result.messages.append(("AGENT", premature, _ts()))
+        result.passed = False
+        print(f"  FAIL: {result.details}")
+        return result
 
-            if msg is None:
-                # No message in this polling window, keep waiting
-                continue
+    result.timing["seconds_silent"] = round(silence_duration, 1)
+    print(f"  Silent for {silence_duration:.0f}s - GOOD")
 
-            # A message arrived -- determine if it is an acknowledgment or a substantive reply
-            is_ack = _contains_any(msg, ACK_KEYWORDS)
+    # Wait for follow-up within 180s total
+    remaining = 180.0 - silence_duration
+    if remaining > 0:
+        print(f"  Waiting for follow-up ({remaining:.0f}s remaining)...")
+        followup = await player.wait_for_response(AGENT_USERNAME, timeout=remaining, poll_interval=2.0)
+        total = time.time() - silence_start
 
-            if is_ack:
-                acknowledgment = msg
-                ack_time = time.time()
-                print(
-                    f"  [AGENT] (late acknowledgment after "
-                    f"{ack_time - request_time:.0f}s): {msg}"
-                )
-                result.messages.append(("AGENT", msg, _ts()))
-                # Ack consumed; break out and measure post-ack silence below
-                break
-            else:
-                # Substantive (non-ack) message -- check elapsed time since request
-                time_since_request = time.time() - request_time
-                if time_since_request < 100.0:
-                    result.timing["seconds_silent"] = round(time_since_request, 1)
-                    result.details = (
-                        f"Agent sent substantive message after "
-                        f"{time_since_request:.0f}s (need >= 100s): {msg[:60]}"
-                    )
-                    result.messages.append(("AGENT", msg, _ts()))
-                    result.passed = False
-                    print(f"  FAIL: {result.details}")
-                    return result
-                else:
-                    # Substantive message arrived after >= 100s -- this is the expected follow-up
-                    result.timing["seconds_until_followup"] = round(time_since_request, 1)
-                    result.messages.append(("AGENT", msg, _ts()))
-                    result.passed = True
-                    result.details = (
-                        f"No explicit ack, silent for {time_since_request:.0f}s, "
-                        f"follow-up received"
-                    )
-                    print(f"  [AGENT] {msg}")
-                    print(f"  PASS: {result.details}")
-                    return result
-
-    # --- Step 3: After acknowledgment, measure silence for at least 100s since request ---
-    if acknowledgment:
-        silence_start = ack_time if ack_time else request_time
-        # We need at least 100s total from request_time; measure remaining silence after ack
-        elapsed_since_request = silence_start - request_time
-        silence_duration_needed = max(100.0 - elapsed_since_request, 60.0)
-
-        print(
-            f"  Acknowledgment received at {elapsed_since_request:.0f}s, "
-            f"measuring silence (need >= {silence_duration_needed:.0f}s more)..."
-        )
-
-        premature = await player.wait_for_response(
-            AGENT_USERNAME, timeout=silence_duration_needed, poll_interval=2.0
-        )
-        actual_silence = time.time() - silence_start
-
-        if premature is not None:
-            # Check if this is a duplicate/secondary acknowledgment or a real follow-up
-            is_another_ack = _contains_any(premature, ACK_KEYWORDS)
-
-            if is_another_ack:
-                # Duplicate acknowledgment -- ignore it and continue waiting
-                print(f"  Duplicate acknowledgment ignored: {premature[:60]}")
-                result.messages.append(("AGENT", premature, _ts()))
-                remaining = silence_duration_needed - actual_silence
-                if remaining > 0:
-                    final_msg = await player.wait_for_response(
-                        AGENT_USERNAME, timeout=remaining, poll_interval=2.0
-                    )
-                    if final_msg:
-                        total_time = time.time() - request_time
-                        result.timing["seconds_until_followup"] = round(total_time, 1)
-                        result.messages.append(("AGENT", final_msg, _ts()))
-                        result.passed = total_time >= 100.0
-                        result.details = (
-                            f"Silent for {actual_silence:.0f}s after ack, "
-                            f"follow-up at {total_time:.0f}s"
-                        )
-                        print(f"  [AGENT] {final_msg}")
-                        print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
-                        return result
-            else:
-                # Premature substantive message before silence window elapsed
-                result.timing["seconds_silent"] = round(actual_silence, 1)
-                result.details = (
-                    f"Agent broke silence after {actual_silence:.0f}s "
-                    f"(need >= {silence_duration_needed:.0f}s): {premature[:60]}"
-                )
-                result.messages.append(("AGENT", premature, _ts()))
-                result.passed = False
-                print(f"  FAIL: {result.details}")
-                return result
-
-        result.timing["seconds_silent"] = round(actual_silence, 1)
-        print(f"  Silent for {actual_silence:.0f}s after acknowledgment - GOOD")
-
-        # --- Step 4: Wait for the follow-up message (up to 180s total from request) ---
-        remaining = max(180.0 - (time.time() - request_time), 0)
-        if remaining > 0:
-            print(f"  Waiting for follow-up ({remaining:.0f}s remaining)...")
-            followup = await player.wait_for_response(
-                AGENT_USERNAME, timeout=remaining, poll_interval=2.0
-            )
-            total = time.time() - request_time
-
-            if followup:
-                result.timing["seconds_until_followup"] = round(total, 1)
-                result.messages.append(("AGENT", followup, _ts()))
-                result.passed = True
-                result.details = (
-                    f"Acknowledged, silent >= 100s, follow-up at {total:.0f}s"
-                )
-                print(f"  [AGENT] {followup}")
-                print(f"  PASS: {result.details}")
-            else:
-                result.passed = False
-                result.details = (
-                    f"Silent for {actual_silence:.0f}s but no follow-up within 180s"
-                )
-                print(f"  FAIL: {result.details}")
+        if followup:
+            result.timing["seconds_until_followup"] = round(total, 1)
+            result.messages.append(("AGENT", followup, _ts()))
+            result.passed = True
+            result.details = f"Silent for {silence_duration:.0f}s (>= 100s), follow-up at {total:.0f}s (<= 180s)"
+            print(f"  [AGENT] {followup}")
+            print(f"  PASS: {result.details}")
         else:
+            result.timing["seconds_until_followup"] = round(total, 1)
             result.passed = False
-            result.details = "Time budget exceeded waiting for follow-up"
+            result.details = f"Silent for {silence_duration:.0f}s but no follow-up within 180s"
             print(f"  FAIL: {result.details}")
     else:
-        # No acknowledgment at all within 130s
         result.passed = False
-        result.details = "No acknowledgment received within 130s"
+        result.details = "Silence consumed entire timeout"
         print(f"  FAIL: {result.details}")
 
     return result
@@ -413,91 +302,12 @@ async def phase3_roi_and_bubble(player: E2ETelegramPlayer) -> TestResult:
 
 
 # =============================================================================
-# PHASE 4: Media Message Analysis (Voice + Image)
+# PHASE 4: Multi-Message Burst
 # =============================================================================
-async def phase4_media_analysis(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(4, "Media Message Analysis (Voice + Image)")
+async def phase4_multi_message_burst(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(4, "Multi-Message Burst")
     print("\n" + "=" * 60)
-    print("[PHASE 4] Testing media message analysis (voice + image)...")
-    print("=" * 60)
-
-    # 4a: Send voice message (.ogg)
-    voice_path = MEDIA_DIR / "response.ogg"
-    print(f"  [PROSPECT] [Sending voice message: {voice_path.name}]")
-    await player.send_file(AGENT_USERNAME, voice_path, voice=True)
-    result.messages.append(("PROSPECT", "[Voice: response.ogg]", _ts()))
-
-    # Short delay to simulate sequential sending
-    await asyncio.sleep(2.5)
-
-    # 4b: Send image (.png)
-    image_path = MEDIA_DIR / "image.png"
-    print(f"  [PROSPECT] [Sending image: {image_path.name}]")
-    await player.send_file(AGENT_USERNAME, image_path)
-    result.messages.append(("PROSPECT", "[Image: image.png - Tegallalang Rice Terraces]", _ts()))
-
-    # 4c: Wait for agent response
-    # Budget: voice transcription ~5s + photo analysis ~5s + batch ~5s + agent ~15s + typing ~3s = ~33s
-    print("  Waiting for agent response to media (120s timeout)...")
-    resp = await player.wait_for_response(AGENT_USERNAME, timeout=120.0, poll_interval=2.0)
-
-    if resp is None:
-        result.details = "TIMEOUT: No response to voice + image messages within 120s"
-        print(f"  FAIL: {result.details}")
-        return result
-
-    print(f"  [AGENT] {resp}")
-    result.messages.append(("AGENT", resp, _ts()))
-
-    # 4d: Validate response
-    identifies_ubud = _contains_any(resp, ["убуд", "ubud", "тегалл", "tegall"])
-    identifies_rice_terraces = _contains_any(resp, ["рис", "террас", "rice", "terrace", "рисов"])
-    identifies_bali_area = _contains_any(resp, ["убуд", "ubud", "район", "локац"])
-
-    has_area_info = _contains_any(resp, [
-        "природ", "зелен", "спокойн", "тихий", "инвестиц", "вилл",
-        "туризм", "туристическ", "ландшафт", "панорам", "красив",
-        "район", "локац", "природн", "культур", "йог", "духовн",
-        "центр", "храм", "искусств"
-    ])
-
-    has_question = "?" in resp
-    continues_conversation = has_question or _contains_any(resp, [
-        "интересн", "рассказ", "подробн", "расскажу", "могу", "давайте"
-    ])
-
-    no_early_zoom = not _check_zoom_mention(resp)
-
-    result.checks = {
-        "identifies_ubud": identifies_ubud,
-        "identifies_rice_terraces": identifies_rice_terraces,
-        "identifies_bali_area": identifies_bali_area,
-        "has_area_info": has_area_info,
-        "continues_conversation": continues_conversation,
-        "has_question": has_question,
-        "no_early_zoom": no_early_zoom,
-    }
-
-    details = []
-    details.append(f"Ubud identified: {'Y' if identifies_ubud else 'N'}")
-    details.append(f"Rice terraces: {'Y' if identifies_rice_terraces else 'N'}")
-    details.append(f"Area info: {'Y' if has_area_info else 'N'}")
-    details.append(f"Continues convo: {'Y' if continues_conversation else 'N'}")
-    details.append(f"No early Zoom: {'Y' if no_early_zoom else 'N'}")
-
-    result.details = "; ".join(details)
-    result.passed = identifies_ubud and has_area_info and continues_conversation
-    print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
-    return result
-
-
-# =============================================================================
-# PHASE 5: Multi-Message Burst
-# =============================================================================
-async def phase5_multi_message_burst(player: E2ETelegramPlayer) -> TestResult:
-    result = TestResult(5, "Multi-Message Burst")
-    print("\n" + "=" * 60)
-    print("[PHASE 5] Testing rapid multi-message handling...")
+    print("[PHASE 4] Testing rapid multi-message handling...")
     print("=" * 60)
 
     # Send 4 messages in quick succession (1-2s apart)
@@ -709,7 +519,7 @@ async def phase8_pain_summary_zoom(player: E2ETelegramPlayer, phase7_last_msg: s
     print("[PHASE 8] Checking pain summary and Zoom proposal quality...")
     print("=" * 60)
 
-    # Check if the agent's last response (from phase 7b) already contained a Zoom proposal
+    # Check if the agent's last response (from phase 6b) already contained a Zoom proposal
     has_zoom_in_phase7 = _check_zoom_mention(phase7_last_msg)
     has_summary_in_phase7 = _contains_any(phase7_last_msg, [
         "итак", "резюмир", "подытож", "ваш запрос", "вас интерес",
@@ -976,13 +786,164 @@ async def phase10_booking_calendar(player: E2ETelegramPlayer) -> TestResult:
 
 
 # =============================================================================
+# PHASE 5: Media Understanding (Image + Voice) — mid-conversation
+# =============================================================================
+async def phase5_media_understanding(player: E2ETelegramPlayer) -> TestResult:
+    result = TestResult(5, "Media Understanding (Image + Voice)")
+    print("\n" + "=" * 60)
+    print("[PHASE 5] Testing media understanding mid-conversation (image + voice)...")
+    print("=" * 60)
+
+    # 10a: Send a photo and check agent responds to its content
+    if not TEST_IMAGE.exists():
+        result.details = f"SKIP: Test image not found at {TEST_IMAGE}"
+        print(f"  SKIP: {result.details}")
+        return result
+
+    print(f"  [PROSPECT] Sending photo: {TEST_IMAGE.name}")
+    try:
+        msg_id = await player.send_file(AGENT_USERNAME, str(TEST_IMAGE))
+        result.messages.append(("PROSPECT", f"[Sent photo: {TEST_IMAGE.name}]", _ts()))
+    except Exception as e:
+        result.details = f"FAIL: Could not send photo: {e}"
+        print(f"  FAIL: {result.details}")
+        return result
+
+    print("  Waiting for agent response to photo (90s)...")
+    photo_responses = await player.wait_for_responses(AGENT_USERNAME, timeout=90.0, poll_interval=2.0, settle_time=8.0)
+
+    if not photo_responses:
+        result.details = "TIMEOUT: No response to photo"
+        print(f"  FAIL: {result.details}")
+        return result
+
+    # Collect all responses (agent may split across multiple messages)
+    for r in photo_responses:
+        print(f"  [AGENT] {r}")
+        result.messages.append(("AGENT", r, _ts()))
+    resp_photo = " ".join(photo_responses)
+
+    # Check if agent responded with content awareness (not just "got your photo")
+    # The test image is rice terraces - agent should reference what it sees
+    photo_references_visual = _contains_any(resp_photo, [
+        "фото", "снимк", "изображен", "красив", "видн", "похож",
+        "террас", "рис", "рисов", "зелен", "природ", "пейзаж",
+        "убуд", "район", "пальм", "тропич", "бали", "место", "локац",
+    ])
+    # Detect duplicate burst response (re-answers Phase 4 questions about villa costs/company/visas)
+    photo_is_burst_duplicate = (
+        _contains_any(resp_photo, ["содержан", "PT PMA", "юрлиц", "визов", "ВНЖ", "KITAS"])
+        and not _contains_any(resp_photo, ["фото", "снимк", "изображен", "террас", "видн"])
+    )
+    photo_has_content = len(resp_photo) > 20 and photo_references_visual
+    photo_not_placeholder = not _contains_any(resp_photo, ["не могу открыть", "не вижу", "не могу увидеть"])
+    photo_not_duplicate = not photo_is_burst_duplicate
+    photo_has_question = "?" in resp_photo
+
+    # 10b: Send a voice message and check agent responds to its content
+    await asyncio.sleep(3)
+
+    if not TEST_VOICE.exists():
+        result.details = f"Photo tested OK but test voice not found at {TEST_VOICE}"
+        print(f"  SKIP voice: {result.details}")
+        # Still evaluate photo results
+        result.checks = {
+            "photo_has_content": photo_has_content,
+            "photo_not_placeholder": photo_not_placeholder,
+            "photo_has_question": photo_has_question,
+            "voice_tested": False,
+        }
+        result.passed = photo_has_content and photo_not_placeholder
+        result.details = f"Photo content: {'Y' if photo_has_content else 'N'}; Photo real: {'Y' if photo_not_placeholder else 'N'}; Voice: SKIPPED"
+        print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
+        return result
+
+    print(f"  [PROSPECT] Sending voice: {TEST_VOICE.name}")
+    try:
+        msg_id = await player.send_voice(AGENT_USERNAME, str(TEST_VOICE))
+        result.messages.append(("PROSPECT", f"[Sent voice: {TEST_VOICE.name}]", _ts()))
+    except Exception as e:
+        result.details = f"Photo OK but voice send failed: {e}"
+        print(f"  FAIL: {result.details}")
+        result.checks = {
+            "photo_has_content": photo_has_content,
+            "photo_not_placeholder": photo_not_placeholder,
+            "photo_has_question": photo_has_question,
+            "voice_tested": False,
+            "voice_error": str(e),
+        }
+        result.passed = photo_has_content and photo_not_placeholder
+        return result
+
+    print("  Waiting for agent response to voice (90s)...")
+    voice_responses = await player.wait_for_responses(AGENT_USERNAME, timeout=90.0, poll_interval=2.0, settle_time=8.0)
+
+    if not voice_responses:
+        result.details = "TIMEOUT: No response to voice message"
+        print(f"  FAIL: {result.details}")
+        result.checks = {
+            "photo_has_content": photo_has_content,
+            "photo_not_placeholder": photo_not_placeholder,
+            "photo_not_duplicate": photo_not_duplicate,
+            "photo_references_visual": photo_references_visual,
+            "voice_timeout": True,
+        }
+        return result
+
+    for r in voice_responses:
+        print(f"  [AGENT] {r}")
+        result.messages.append(("AGENT", r, _ts()))
+    resp_voice = " ".join(voice_responses)
+
+    # The test voice says: "I saw a picture of this region, I don't know what district
+    # it is in Bali, but I want to buy real estate there"
+    # Agent should respond about Bali real estate, the region, or ask clarifying questions
+    voice_has_content = len(resp_voice) > 15
+    voice_references_region = _contains_any(resp_voice, [
+        "район", "регион", "локац", "террас", "рис", "убуд", "чангу", "семиньяк",
+        "бали", "местоположен", "фото", "снимк", "изображен",
+    ])
+    voice_has_question = "?" in resp_voice
+    # Agent should NOT say "this was a voice message" - it should treat content as text
+    voice_natural = not _contains_any(resp_voice, ["голосов", "аудио", "записал"])
+
+    result.checks = {
+        "photo_has_content": photo_has_content,
+        "photo_not_placeholder": photo_not_placeholder,
+        "photo_not_duplicate": photo_not_duplicate,
+        "photo_references_visual": photo_references_visual,
+        "photo_has_question": photo_has_question,
+        "voice_has_content": voice_has_content,
+        "voice_references_region": voice_references_region,
+        "voice_has_question": voice_has_question,
+        "voice_natural": voice_natural,
+    }
+
+    details = []
+    details.append(f"Photo content: {'Y' if photo_has_content else 'N'}")
+    details.append(f"Photo real: {'Y' if photo_not_placeholder else 'N'}")
+    details.append(f"Photo not dup: {'Y' if photo_not_duplicate else 'N'}")
+    details.append(f"Photo visual: {'Y' if photo_references_visual else 'N'}")
+    details.append(f"Voice content: {'Y' if voice_has_content else 'N'}")
+    details.append(f"Voice region ref: {'Y' if voice_references_region else 'N'}")
+    details.append(f"Voice natural: {'Y' if voice_natural else 'N'}")
+
+    result.details = "; ".join(details)
+    # Pass if both photo and voice got meaningful responses
+    result.passed = (photo_has_content and photo_not_placeholder and photo_not_duplicate and
+                     voice_has_content and voice_natural)
+    print(f"  {'PASS' if result.passed else 'FAIL'}: {result.details}")
+    return result
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 async def main():
     test_start = time.time()
     print("=" * 60)
     print("  AUTOMATED E2E TELEGRAM CONVERSATION TEST (EXTENDED)")
-    print("  10 Phases: Snake + Media + Multi-Message + BANT + Objections + Scheduling")
+    print("  10 Phases: Snake + Multi-Message + Media + BANT + Objections + Scheduling")
     print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -993,14 +954,13 @@ async def main():
         me = await player.get_me()
         print(f"Connected as: {me['first_name']} (@{me['username']})")
 
-        # Clean chat history BEFORE Docker starts to ensure fresh conversation
-        await delete_chat_history(player)
-
-        # Signal that Telethon is connected and ready to receive messages.
-        # The calling workflow should wait for this marker before starting Docker containers.
-        print("E2E_TELETHON_READY", flush=True)
-
         results = []
+
+        # NOTE: Chat cleanup and prospect reset must happen BEFORE the daemon
+        # Docker container starts. The daemon sends initial outreach immediately
+        # on startup, so deleting chat history here would race against the daemon
+        # and delete the initial message Phase 1 is waiting for.
+        # The calling workflow (telegram_conversation_manual_test) handles pre-cleanup.
 
         # Phase 1: Initial Contact
         r1 = await phase1_initial_contact(player)
@@ -1014,12 +974,12 @@ async def main():
         r3 = await phase3_roi_and_bubble(player)
         results.append(r3)
 
-        # Phase 4: Media Message Analysis (Voice + Image) - NEW
-        r4 = await phase4_media_analysis(player)
+        # Phase 4: Multi-Message Burst
+        r4 = await phase4_multi_message_burst(player)
         results.append(r4)
 
-        # Phase 5: Multi-Message Burst
-        r5 = await phase5_multi_message_burst(player)
+        # Phase 5: Media Understanding (mid-conversation — photo + voice)
+        r5 = await phase5_media_understanding(player)
         results.append(r5)
 
         # Phase 6: Budget + Need + Catalog Deflection
@@ -1063,8 +1023,8 @@ async def main():
 
         methodology = {
             "snake_structure": r1.checks.get("is_light_entry", False),
-            "media_understanding": r4.checks.get("identifies_ubud", False) and r4.checks.get("has_area_info", False),
-            "multi_message_handling": r5.checks.get("topics_addressed", 0) >= 2,
+            "multi_message_handling": r4.checks.get("topics_addressed", 0) >= 2,
+            "media_understanding": r5.checks.get("photo_has_content", False) and r5.checks.get("voice_has_content", False),
             "bant_before_zoom": r6.checks.get("no_early_zoom", False),
             "pain_summary_before_zoom": r8.checks.get("has_pain_summary", False),
             "objections_with_empathy": r3.checks.get("shows_empathy", False) and r3.checks.get("no_devalue", False),

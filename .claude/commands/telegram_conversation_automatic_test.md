@@ -16,8 +16,9 @@ This command runs a fully automated end-to-end conversation test between the sal
 - **Wait behavior**: Respects "come back later" requests
 - **Timezone-aware scheduling**: Client timezone display, email collection
 - **Calendar event creation**: Google Calendar with attendee invite
+- **Media understanding**: Agent analyzes photos via Gemini vision, transcribes voice messages
 
-The conversation has 9 phases and ~18+ message exchanges, testing the agent's ability to handle a realistic, challenging client interaction.
+The conversation has 10 phases and ~18+ message exchanges, testing the agent's ability to handle a realistic, challenging client interaction.
 
 ## Variables
 
@@ -41,8 +42,8 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
 
 - This command orchestrates a fully automated end-to-end conversation test over real Telegram infrastructure
 - The test uses the E2ETelegramPlayer (`.claude/skills/testing/scripts/e2e_telegram_player.py`) to send messages AS @buddah_lucid to the running agent @BetterBohdan
-- The test script connects Telethon FIRST and prints `E2E_TELETHON_READY` - Docker containers must be started AFTER this marker appears
-- The test follows a scripted conversation flow designed to validate NINE specific behavioral areas
+- The agent must already be running (either locally via daemon or via Docker) before this test starts
+- The test follows a scripted conversation flow designed to validate TEN specific behavioral areas
 - Each test phase has explicit PASS/FAIL criteria - the test is deterministic, not exploratory
 - IMPORTANT: The conversation is conducted in Russian, matching the agent's configured language
 - IMPORTANT: The test prospect must be reset to "new" status before starting so the agent sends its initial outreach
@@ -85,19 +86,16 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
      "
      ```
 
-3. **Run the automated test script (connects Telethon FIRST):**
-   - The test script is at `E2E_AUTO_TEST_SCRIPT`
-   - Start the test script in a **background shell**: `PYTHONPATH=src uv run python .claude/skills/testing/scripts/run_e2e_auto_test.py`
-   - The script will connect to Telegram, clean chat history, then print `E2E_TELETHON_READY` to stdout
-   - **WAIT** for the `E2E_TELETHON_READY` marker in the background shell output before proceeding to step 4
-   - This ensures Telethon is connected and ready to receive messages BEFORE Docker starts
-
-4. **Start the agent (AFTER Telethon is ready):**
+3. **Start the agent:**
    - Start Docker containers in background: `docker compose -f deployment/docker/docker-compose.yml up --build -d postgres telegram-agent`
    - Wait 15 seconds for initialization
    - Verify containers are healthy: `docker compose -f deployment/docker/docker-compose.yml ps`
    - Begin tailing agent logs in a background shell for debugging: `docker compose -f deployment/docker/docker-compose.yml logs -f telegram-agent`
-   - The test script (already running in background from step 3) will automatically detect the agent's initial outreach in Phase 1
+
+4. **Run the automated test script:**
+   - The test script is at `E2E_AUTO_TEST_SCRIPT`
+   - Run with: `PYTHONPATH=src uv run python .claude/skills/testing/scripts/run_e2e_auto_test.py`
+   - The script produces structured JSON output for each phase
 
 5. **Phase 1 - Initial Contact & Snake Light Entry (PASS/FAIL):**
    - Wait up to 90 seconds for the agent to send the initial outreach message to @buddah_lucid
@@ -127,15 +125,23 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
    - Wait for agent response (60s timeout)
    - PASS criteria: Agent batches all messages (via MessageBuffer) and responds naturally, addressing at least 2 of 3 topics (villa maintenance costs, company purchase structure, visas for long-term stay). Response is coherent, 1-3 sentences, includes a follow-up question. No messages ignored, no crash.
 
-9. **Phase 5 - BANT: Budget + Need + "Send Catalog" Objection (PASS/FAIL):**
-   - Send as prospect: "Ладно, допустим. Бюджет у меня около 300 тысяч долларов. Хочу гарантированную доходность. Скиньте каталог посмотрю."
-   - Wait for agent response (60s timeout)
-   - PASS criteria: Agent does NOT just agree to send catalog (anti-pattern #8). Agent should deflect "catalog" request ("Каталог не покажет подходящие варианты", "на зуме разберем аналитику"). Agent acknowledges budget, asks about type (apartments/villa) or purpose (investment/living). Agent does NOT invite to Zoom yet (too early - only has Budget so far!)
-   - Send as prospect: "Ну ок, без каталога. Мне интересны апартаменты чисто как инвестиция, сам жить не планирую."
-   - Wait for agent response (60s timeout)
-   - PASS criteria: Agent reflects the answer (Snake: reflection), adds brief expertise, asks next BANT question (Authority or Timeline). Still does NOT invite to Zoom.
+9. **Phase 5 - Media Understanding: Image + Voice (PASS/FAIL):**
+    - Send the test photo from `data/media_for_test/image.png` as a photo message (using E2ETelegramPlayer's `send_file()`)
+    - Wait for agent response (90s timeout)
+    - PASS criteria for photo: Agent responds with >20 chars, does NOT say "can't see/open", asks a relevant question about what's shown (rice terraces -> could reference the area, nature, etc.)
+    - After 3s delay, send the test voice from `data/media_for_test/response.ogg` as a voice message (using `send_voice()`)
+    - Wait for agent response (90s timeout)
+    - PASS criteria for voice: Agent responds to the CONTENT of the voice (prospect talks about wanting to buy real estate in the region from the photo), does NOT mention "voice message" or "audio" (treats it as normal text), asks a follow-up question
 
-10. **Phase 6 - BANT: Authority + Timeline + "Leasehold" Objection (PASS/FAIL):**
+10. **Phase 6 - BANT: Budget + Need + "Send Catalog" Objection (PASS/FAIL):**
+    - Send as prospect: "Ладно, допустим. Бюджет у меня около 300 тысяч долларов. Хочу гарантированную доходность. Скиньте каталог посмотрю."
+    - Wait for agent response (60s timeout)
+    - PASS criteria: Agent does NOT just agree to send catalog (anti-pattern #8). Agent should deflect "catalog" request ("Каталог не покажет подходящие варианты", "на зуме разберем аналитику"). Agent acknowledges budget, asks about type (apartments/villa) or purpose (investment/living). Agent does NOT invite to Zoom yet (too early - only has Budget so far!)
+    - Send as prospect: "Ну ок, без каталога. Мне интересны апартаменты чисто как инвестиция, сам жить не планирую."
+    - Wait for agent response (60s timeout)
+    - PASS criteria: Agent reflects the answer (Snake: reflection), adds brief expertise, asks next BANT question (Authority or Timeline). Still does NOT invite to Zoom.
+
+11. **Phase 7 - BANT: Authority + Timeline + "Leasehold" Objection (PASS/FAIL):**
     - Send as prospect: "Решение принимаю сам, но жена тоже участвует в обсуждении. А leasehold - это же не настоящая собственность? Что если отберут?"
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent handles leasehold objection with FACTS (like London, 30+ years, legal protection), does NOT make up information, notes Authority (client + wife), asks about Timeline
@@ -143,14 +149,14 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent addresses guarantee concern with facts (notary, due diligence 140 points, we reject 90% of developers), acknowledges timeline. Now agent has full BANT (Budget: $300k, Authority: self+wife, Need: investment apartments, Timeline: 2-3 months). Agent should now do a PAIN SUMMARY before proposing Zoom.
 
-11. **Phase 7 - Pain Summary & Zoom Proposal (PASS/FAIL):**
-    - This is a CHECK on what the agent says AFTER Phase 6. The agent's response to Phase 6 should:
+12. **Phase 8 - Pain Summary & Zoom Proposal (PASS/FAIL):**
+    - This is a CHECK on what the agent says AFTER Phase 7. The agent's response to Phase 7 should:
     - PASS criteria: Agent summarizes client's key points/pains BEFORE inviting to Zoom (e.g., "Итак, вас интересуют инвестиционные апартаменты, бюджет $300k, важна надёжность застройщика..."). Agent proposes Zoom WITH value explanation ("на встрече покажу аналитику по вашему запросу", "разберем конкретные проекты"). Agent proposes SPECIFIC time, not "when is convenient".
     - FAIL criteria: Agent jumps to Zoom without summary. Agent says generic "давайте созвонимся" without explaining value. Agent asks "когда удобно" without proposing times.
     - If agent hasn't proposed Zoom yet, send: "Интересно, что дальше?"
     - Wait for agent response and check for pain summary + Zoom proposal
 
-12. **Phase 8 - Timezone-Aware Scheduling & Email Collection (PASS/FAIL):**
+13. **Phase 9 - Timezone-Aware Scheduling & Email Collection (PASS/FAIL):**
     - Send as prospect: "Ок, давайте созвонимся. Только я сейчас в Варшаве, учтите разницу во времени."
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent acknowledges timezone (Warsaw/UTC+1 vs Bali/UTC+8), mentions Bali working hours context (works 10:00-19:00 Bali time), and asks for email
@@ -161,7 +167,7 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
     - Wait for agent response (60s timeout)
     - PASS criteria: Agent confirms the specific time in client's timezone, does NOT dump all available slots again
 
-13. **Phase 9 - Meeting Booking & Calendar Validation (PASS/FAIL):**
+14. **Phase 10 - Meeting Booking & Calendar Validation (PASS/FAIL):**
     - Send as prospect: "Да, записывайте!"
     - Wait for agent response (90s timeout)
     - PASS criteria for message: Agent confirms meeting is scheduled, mentions the time, mentions the email, ideally includes Zoom link
@@ -169,11 +175,11 @@ TEST_CLIENT_EMAIL: bohdan.pytaichuk@gmail.com
     - Validate Google Calendar: Use the CalendarConnector to check if a calendar event was created for tomorrow containing "buddah_lucid" or "Buddah" in the summary/description AND has `bohdan.pytaichuk@gmail.com` as an attendee
     - PASS criteria: Email stored in prospect data AND calendar event exists with attendee invite
 
-14. **Collect full conversation history:**
+15. **Collect full conversation history:**
     - Use E2ETelegramPlayer's `get_chat_history("@BetterBohdan", limit=100)` to retrieve the complete conversation
     - Alternatively read Docker logs for the full agent-side view
 
-15. **Cleanup:**
+16. **Cleanup:**
     - Stop Docker containers: `docker compose -f deployment/docker/docker-compose.yml down`
     - Do NOT delete Google Calendar events - preserve them for manual review after the test
 
@@ -188,13 +194,14 @@ Present results as a structured Rich panel report with the following sections:
 | 2 | Wait Behavior | PASS/FAIL | Silent for Xs (need >=100s), follow-up at Xs (need <=180s) |
 | 3 | ROI + Bubble Objection | PASS/FAIL | Factual ROI Y/N, empathy on bubble Y/N, no devaluing Y/N |
 | 4 | Multi-Message Burst | PASS/FAIL | Topics addressed: N/3, batched Y/N, coherent Y/N |
-| 5 | Budget/Need + Catalog Deflection | PASS/FAIL | Catalog deflected Y/N, no early Zoom Y/N, BANT progress Y/N |
-| 6 | Authority/Timeline + Leasehold Objection | PASS/FAIL | Leasehold facts Y/N, guarantee handled Y/N, full BANT Y/N |
-| 7 | Pain Summary & Zoom Proposal | PASS/FAIL | Pain summary Y/N, Zoom value explained Y/N, specific time Y/N |
-| 8 | Timezone & Email | PASS/FAIL | Client timezone Y/N, email collected Y/N, time confirmed Y/N |
-| 9 | Calendar & Booking | PASS/FAIL | Meeting confirmed Y/N, calendar event Y/N, attendee invite Y/N |
+| 5 | Media Understanding (Image + Voice) | PASS/FAIL | Photo content Y/N, photo real Y/N, voice content Y/N, voice region ref Y/N, voice natural Y/N |
+| 6 | Budget/Need + Catalog Deflection | PASS/FAIL | Catalog deflected Y/N, no early Zoom Y/N, BANT progress Y/N |
+| 7 | Authority/Timeline + Leasehold Objection | PASS/FAIL | Leasehold facts Y/N, guarantee handled Y/N, full BANT Y/N |
+| 8 | Pain Summary & Zoom Proposal | PASS/FAIL | Pain summary Y/N, Zoom value explained Y/N, specific time Y/N |
+| 9 | Timezone & Email | PASS/FAIL | Client timezone Y/N, email collected Y/N, time confirmed Y/N |
+| 10 | Calendar & Booking | PASS/FAIL | Meeting confirmed Y/N, calendar event Y/N, attendee invite Y/N |
 
-**Overall Score:** X/9 phases passed
+**Overall Score:** X/10 phases passed
 
 **Methodology Compliance Score:**
 - Snake structure followed: Y/N (light entry, reflections, expertise with facts)
@@ -204,6 +211,7 @@ Present results as a structured Rich panel report with the following sections:
 - Multi-message handling natural: Y/N (batched, addressed multiple topics coherently)
 - No anti-patterns detected: Y/N (no "зафиксировала", no early Zoom, no catalog surrender)
 - Messages concise (1-3 sentences): Y/N
+- Media understanding working: Y/N (photo analyzed by Gemini, voice transcribed, agent uses content in response)
 
 **Full Conversation Log:** Display the complete conversation with timestamps, labeling each message as [AGENT] or [PROSPECT]
 

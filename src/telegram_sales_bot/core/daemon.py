@@ -35,8 +35,6 @@ from telegram_sales_bot.scheduling.tool import SchedulingTool
 from telegram_sales_bot.database.init import init_database
 from telegram_sales_bot.integrations.elevenlabs import VoiceTranscriber
 from telegram_sales_bot.integrations.media_detector import detect_media_type
-from telegram_sales_bot.temporal.transcription_cache import TranscriptionCache
-from telegram_sales_bot.temporal.chat_history_fetcher import TelegramChatHistoryFetcher
 from telegram_sales_bot.integrations.media_analyzer import MediaAnalyzer
 from telegram_sales_bot.integrations.google_calendar import CalendarConnector
 from telegram_sales_bot.integrations.zoom import ZoomBookingService
@@ -77,6 +75,7 @@ class TelegramDaemon:
         self.client = None
         self.service = None
         self.voice_transcriber: Optional[VoiceTranscriber] = None
+        self.media_analyzer: Optional[MediaAnalyzer] = None
         self.agent = None
         self.prospect_manager = None
         self.config = None
@@ -88,9 +87,6 @@ class TelegramDaemon:
         self.bot_user_id = None  # Telegram ID of the bot account
         self.bot_username = None  # Username of the bot account
         self.message_buffer = None  # Initialized in initialize()
-        self.transcription_cache = None  # Initialized in initialize()
-        self.chat_history_fetcher = None  # Initialized in initialize()
-        self.media_analyzer = None  # Initialized in initialize()
         self.running = False
         self._offered_slots: dict[str, list[str]] = {}  # prospect_id -> offered slot_ids
         self.stats = {
@@ -259,15 +255,15 @@ class TelegramDaemon:
             self.voice_transcriber = None
             console.print(f"  [yellow]![/yellow] Voice transcription disabled: {e}")
 
-        # Initialize transcription cache
-        self.transcription_cache = TranscriptionCache()
-        console.print(f"  [green]✓[/green] Transcription cache initialized ({self.transcription_cache.size} cached entries)")
-
-        # Initialize media analyzer (uses voice_transcriber + Claude Code CLI for photos)
-        self.media_analyzer = MediaAnalyzer(voice_transcriber=self.voice_transcriber)
-        vision_status = "enabled" if self.media_analyzer.vision_enabled else "disabled"
-        transcription_status = "enabled" if self.media_analyzer.transcription_enabled else "disabled"
-        console.print(f"  [green]✓[/green] Media analyzer ready (vision: {vision_status}, transcription: {transcription_status})")
+        # Initialize media analyzer (optional - requires GEMINI_API_KEY)
+        try:
+            self.media_analyzer = MediaAnalyzer(voice_transcriber=self.voice_transcriber)
+            vision_status = "enabled" if self.media_analyzer.vision_enabled else "disabled"
+            transcription_status = "enabled" if self.media_analyzer.transcription_enabled else "disabled"
+            console.print(f"  [green]✓[/green] Media analyzer ready (vision: {vision_status}, transcription: {transcription_status})")
+        except Exception as e:
+            self.media_analyzer = None
+            console.print(f"  [yellow]![/yellow] Media analyzer disabled: {e}")
 
         # Initialize message buffer with flush callback
         self.message_buffer = MessageBuffer(
@@ -282,14 +278,6 @@ class TelegramDaemon:
         # Register message handler
         self._register_handlers()
         console.print(f"  [green]✓[/green] Message handlers registered")
-
-        # Initialize chat history fetcher (needs client + bot_user_id + transcription_cache)
-        self.chat_history_fetcher = TelegramChatHistoryFetcher(
-            client=self.client,
-            bot_user_id=self.bot_user_id,
-            transcription_cache=self.transcription_cache,
-        )
-        console.print(f"  [green]✓[/green] Chat history fetcher ready (Telegram API as context source)")
 
     def _load_config(self) -> AgentConfig:
         """Load agent configuration."""
@@ -393,18 +381,27 @@ class TelegramDaemon:
         # 6. Aggregate messages for AI
         combined_text = self._aggregate_messages(messages)
 
+        # 6a. If batch contains media, add explicit focus hint for the agent
+        media_messages = [m for m in messages if m.has_media]
+        if media_messages:
+            media_types = list(set(m.media_type for m in media_messages if m.media_type))
+            media_hint = ", ".join(media_types)
+            combined_text = (
+                f"[МЕДИА от клиента: {media_hint}] "
+                f"Клиент отправил медиа. Ответь на НОВОЕ медиа-сообщение, "
+                f"НЕ повторяй предыдущий ответ.\n\n"
+                f"{combined_text}"
+            )
+            console.print(f"[cyan]Media-aware batch: {media_hint}[/cyan]")
+
         # 7. Calculate reading delay for TOTAL text
         total_length = sum(len(m.text) for m in messages)
         reading_delay = self._calculate_batch_reading_delay(total_length)
         console.print(f"[dim]Reading delay: {reading_delay:.1f}s for {total_length} total chars[/dim]")
         await asyncio.sleep(reading_delay)
 
-        # 8. Get context from Telegram API and generate SINGLE response
-        context = await self.chat_history_fetcher.get_conversation_context(
-            telegram_id=prospect.telegram_id,
-            prospect_name=prospect.name,
-            agent_name=self.config.agent_name,
-        )
+        # 8. Get context and generate SINGLE response
+        context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
         try:
             action = await self.agent.generate_response(
@@ -421,82 +418,54 @@ class TelegramDaemon:
         except Exception as e:
             console.print(f"[red]Error processing batch: {e}[/red]")
 
-    def _resolve_client_timezone(
-        self, prospect, agent_client_tz: Optional[str] = None, label: str = ""
-    ) -> Optional[str]:
-        """
-        Resolve client timezone with priority: agent-provided > stored > heuristic.
-
-        When the agent provides a timezone (from the client explicitly naming a city),
-        it is stored with confidence=1.0 and overrides everything else.
-
-        Args:
-            prospect: Prospect object with estimated_timezone and timezone_confidence
-            agent_client_tz: Timezone string from scheduling_data.client_timezone
-            label: Context label for logging (e.g., "for booking")
-
-        Returns:
-            IANA timezone string or None if no timezone could be determined
-        """
-        log_suffix = f" {label}" if label else ""
-
-        if agent_client_tz:
-            # Agent explicitly provided timezone (client stated their city)
-            self.prospect_manager.update_prospect_timezone(
-                prospect.telegram_id,
-                agent_client_tz,
-                1.0
-            )
-            prospect.estimated_timezone = agent_client_tz
-            prospect.timezone_confidence = 1.0
-            console.print(f"[blue]Using agent-provided timezone{log_suffix}: {agent_client_tz} (confidence: 1.0)[/blue]")
-            return agent_client_tz
-
-        if prospect.estimated_timezone and prospect.timezone_confidence >= 0.7:
-            console.print(f"[dim]Using stored timezone{log_suffix}: {prospect.estimated_timezone}[/dim]")
-            return prospect.estimated_timezone
-
-        # Fall back to heuristic estimation
-        message_timestamps = [
-            msg.timestamp for msg in prospect.conversation_history
-            if msg.timestamp and msg.sender == "prospect"
-        ]
-        if message_timestamps:
-            tz_estimate = estimate_timezone(message_timestamps)
-            if tz_estimate.confidence > 0.7:
-                self.prospect_manager.update_prospect_timezone(
-                    prospect.telegram_id,
-                    tz_estimate.timezone,
-                    tz_estimate.confidence
-                )
-                prospect.estimated_timezone = tz_estimate.timezone
-                prospect.timezone_confidence = tz_estimate.confidence
-                console.print(
-                    f"[blue]Detected timezone{log_suffix}: {tz_estimate.timezone} "
-                    f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
-                )
-                return tz_estimate.timezone
-            else:
-                console.print(
-                    f"[dim]Timezone estimate low confidence{log_suffix}: {tz_estimate.timezone} "
-                    f"({tz_estimate.confidence:.2f})[/dim]"
-                )
-
-        return None
-
     async def _handle_action(self, prospect, action, context):
         """Handle agent action (extracted from handle_incoming for reuse)."""
         # Handle check_availability action
         if action.action == "check_availability":
+            # Detect client timezone if not already known with high confidence
+            client_tz = None
+            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
+                # Estimate from conversation history
+                message_timestamps = [
+                    msg.timestamp for msg in prospect.conversation_history
+                    if msg.timestamp and msg.sender == "prospect"
+                ]
+                if message_timestamps:
+                    tz_estimate = estimate_timezone(message_timestamps)
+
+                    if tz_estimate.confidence > 0.7:
+                        # Store in prospect record
+                        self.prospect_manager.update_prospect_timezone(
+                            prospect.telegram_id,
+                            tz_estimate.timezone,
+                            tz_estimate.confidence
+                        )
+                        prospect.estimated_timezone = tz_estimate.timezone
+                        prospect.timezone_confidence = tz_estimate.confidence
+                        console.print(
+                            f"[blue]Detected timezone: {tz_estimate.timezone} "
+                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
+                        )
+                        client_tz = tz_estimate.timezone
+                    else:
+                        console.print(
+                            f"[dim]Timezone estimate low confidence: {tz_estimate.timezone} "
+                            f"({tz_estimate.confidence:.2f})[/dim]"
+                        )
+            else:
+                # Use existing high-confidence timezone
+                client_tz = prospect.estimated_timezone
+                console.print(f"[dim]Using stored timezone: {client_tz}[/dim]")
+
+            # Check if agent provided a specific preferred time (user already named a time)
             sched_data = action.scheduling_data or {}
             preferred_time_str = sched_data.get("preferred_time")
             preferred_date_str = sched_data.get("preferred_date")
+            agent_client_tz = sched_data.get("client_timezone")
 
-            # Resolve timezone: agent-provided > stored > heuristic
-            client_tz = self._resolve_client_timezone(
-                prospect,
-                agent_client_tz=sched_data.get("client_timezone"),
-            )
+            # Override detected timezone with agent-provided one if available
+            if agent_client_tz:
+                client_tz = agent_client_tz
 
             # Persist email early if provided in scheduling_data (Issue 3 fix)
             sched_email = sched_data.get("email")
@@ -591,56 +560,15 @@ class TelegramDaemon:
         elif action.action == "schedule" and action.scheduling_data:
             slot_id = action.scheduling_data.get("slot_id")
 
-            # Validate slot_id was actually offered to client
+            # Validate slot_id was actually offered to client (Issue 5 fix)
             prospect_key = str(prospect.telegram_id)
             offered = self._offered_slots.get(prospect_key, [])
             if offered and slot_id not in offered:
-                if len(offered) == 1:
-                    # Only ONE slot was offered - safe to auto-correct
-                    console.print(
-                        f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
-                        f"Auto-correcting to the only offered slot: {offered[0]}[/yellow]"
-                    )
-                    slot_id = offered[0]
-                else:
-                    # MULTIPLE slots were offered - ask client to choose
-                    console.print(
-                        f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
-                        f"Multiple alternatives exist ({len(offered)} slots) - asking client to choose.[/yellow]"
-                    )
-                    # Re-send alternatives to client
-                    alt_texts = []
-                    for alt_id in offered[:3]:
-                        # Extract time from slot ID format YYYYMMDD_HHMM
-                        try:
-                            time_part = alt_id.split("_")[1]
-                            h, m = int(time_part[:2]), int(time_part[2:])
-                            from datetime import time as dt_time, date as dt_date, datetime as dt_datetime
-                            from zoneinfo import ZoneInfo
-                            date_part = alt_id.split("_")[0]
-                            slot_date = dt_date(int(date_part[:4]), int(date_part[4:6]), int(date_part[6:8]))
-                            slot_time = dt_time(h, m)
-                            # Convert to client timezone if available
-                            client_tz_for_display = action.scheduling_data.get("client_timezone") or prospect.estimated_timezone
-                            if client_tz_for_display:
-                                bali_dt = dt_datetime.combine(slot_date, slot_time, tzinfo=ZoneInfo("Asia/Makassar"))
-                                client_dt = bali_dt.astimezone(ZoneInfo(client_tz_for_display))
-                                alt_texts.append(client_dt.strftime("%H:%M"))
-                            else:
-                                alt_texts.append(f"{h:02d}:{m:02d}")
-                        except Exception:
-                            alt_texts.append(alt_id)
-
-                    clarify_msg = f"На какое именно время записать - {', '.join(alt_texts[:-1])} или {alt_texts[-1]}?" if len(alt_texts) > 1 else f"Записать на {alt_texts[0]}?"
-                    send_result = await self.service.send_message(prospect.telegram_id, clarify_msg)
-                    if send_result.get("sent"):
-                        self.stats["messages_sent"] += 1
-                        self.prospect_manager.record_agent_message(
-                            prospect.telegram_id,
-                            send_result["message_id"],
-                            clarify_msg
-                        )
-                    return  # Don't proceed with booking - wait for client to choose
+                console.print(
+                    f"[yellow]WARNING: Agent tried to book slot {slot_id} which was NOT offered. "
+                    f"Offered: {offered}. Auto-correcting to first offered slot: {offered[0]}[/yellow]"
+                )
+                slot_id = offered[0]
 
             client_email = action.scheduling_data.get("email", "")
             topic = action.scheduling_data.get("topic", "Консультация по недвижимости на Бали")
@@ -664,12 +592,40 @@ class TelegramDaemon:
                 console.print(f"[yellow]Schedule rejected - no email provided[/yellow]")
                 return
 
-            # Resolve timezone: agent-provided > stored > heuristic
-            client_tz = self._resolve_client_timezone(
-                prospect,
-                agent_client_tz=action.scheduling_data.get("client_timezone"),
-                label="for booking",
-            )
+            # Detect client timezone if not already known (for meeting invite timezone info)
+            client_tz = None
+            if not prospect.estimated_timezone or prospect.timezone_confidence < 0.7:
+                # Estimate from conversation history
+                message_timestamps = [
+                    msg.timestamp for msg in prospect.conversation_history
+                    if msg.timestamp and msg.sender == "prospect"
+                ]
+                if message_timestamps:
+                    tz_estimate = estimate_timezone(message_timestamps)
+
+                    if tz_estimate.confidence > 0.7:
+                        # Store in prospect record
+                        self.prospect_manager.update_prospect_timezone(
+                            prospect.telegram_id,
+                            tz_estimate.timezone,
+                            tz_estimate.confidence
+                        )
+                        prospect.estimated_timezone = tz_estimate.timezone
+                        prospect.timezone_confidence = tz_estimate.confidence
+                        console.print(
+                            f"[blue]Detected timezone for booking: {tz_estimate.timezone} "
+                            f"(confidence: {tz_estimate.confidence:.2f})[/blue]"
+                        )
+                        client_tz = tz_estimate.timezone
+            else:
+                client_tz = prospect.estimated_timezone
+                console.print(f"[dim]Using stored timezone for booking: {client_tz}[/dim]")
+
+            # Override with agent-provided timezone if available (same as check_availability)
+            agent_client_tz = action.scheduling_data.get("client_timezone")
+            if agent_client_tz:
+                client_tz = agent_client_tz
+                console.print(f"[blue]Using agent-provided timezone for booking: {client_tz}[/blue]")
 
             # Store email in prospect record
             self.prospect_manager.update_prospect_email(prospect.telegram_id, client_email.strip())
@@ -875,75 +831,84 @@ class TelegramDaemon:
             media_result = detect_media_type(event)
             message_text = event.text or ""
 
-            # Handle voice messages - transcribe to text + cache
-            if media_result.media_type == "voice" and self.voice_transcriber:
-                try:
-                    console.print(f"[cyan]Transcribing voice from {prospect.name}...[/cyan]")
-                    transcription = await self.voice_transcriber.transcribe_telegram_voice(
-                        self.client, event.message
-                    )
-                    message_text = transcription.text
-                    # Cache voice transcription for history fetcher
-                    if self.transcription_cache and message_text:
-                        self.transcription_cache.store(
-                            chat_id=sender_id, message_id=event.id,
-                            media_type="voice", transcription=message_text,
+            # Handle voice messages - transcribe to text
+            if media_result.media_type == "voice":
+                transcribed = False
+                # Try ElevenLabs first
+                if self.voice_transcriber:
+                    try:
+                        console.print(f"[cyan]Transcribing voice from {prospect.name} (ElevenLabs)...[/cyan]")
+                        transcription = await self.voice_transcriber.transcribe_telegram_voice(
+                            self.client, event.message
                         )
-                    console.print(f"[green]Transcribed:[/green] {message_text[:100]}...")
-                except Exception as e:
-                    console.print(f"[yellow]Transcription failed: {e}[/yellow]")
+                        message_text = transcription.text
+                        console.print(f"[green]Transcribed:[/green] {message_text[:100]}...")
+                        transcribed = True
+                    except Exception as e:
+                        console.print(f"[yellow]ElevenLabs transcription failed: {e}[/yellow]")
+                # Fallback to Gemini for voice transcription
+                if not transcribed and self.media_analyzer and self.media_analyzer.vision_enabled:
+                    try:
+                        console.print(f"[cyan]Transcribing voice from {prospect.name} (Gemini)...[/cyan]")
+                        analysis = await self.media_analyzer.analyze_audio(self.client, event.message)
+                        if analysis.success:
+                            message_text = analysis.text
+                            console.print(f"[green]Transcribed (Gemini):[/green] {message_text[:100]}...")
+                            transcribed = True
+                    except Exception as e:
+                        console.print(f"[yellow]Gemini voice transcription failed: {e}[/yellow]")
+                if not transcribed:
                     message_text = "[Голосовое сообщение]"
 
-            # Handle photo - analyze with Claude Vision + cache
+            # Handle photo - analyze with Gemini
             elif media_result.media_type == "photo" and self.media_analyzer and self.media_analyzer.vision_enabled:
                 try:
                     console.print(f"[cyan]Analyzing photo from {prospect.name}...[/cyan]")
-                    analyzed_text = await self.media_analyzer.analyze_photo(self.client, event.message)
-                    message_text = analyzed_text if analyzed_text else "[Фото]"
-                    # Cache for history fetcher
-                    if self.transcription_cache and analyzed_text:
-                        self.transcription_cache.store(
-                            chat_id=sender_id, message_id=event.id,
-                            media_type="photo", transcription=analyzed_text,
-                        )
-                    console.print(f"[green]Photo analyzed:[/green] {message_text[:100]}")
+                    analysis = await self.media_analyzer.analyze_photo(self.client, event.message)
+                    message_text = analysis.text if not message_text else f"{message_text}\n{analysis.text}"
+                    console.print(f"[green]Photo analyzed:[/green] {analysis.text[:100]}")
                 except Exception as e:
                     console.print(f"[yellow]Photo analysis failed: {e}[/yellow]")
-                    message_text = "[Фото]"
+                    if not message_text:
+                        message_text = "[Фото]"
 
-            # Handle video - extract audio + transcribe + cache
-            elif media_result.media_type == "video" and self.media_analyzer and self.media_analyzer.transcription_enabled:
+            # Handle video - visual analysis + audio transcription
+            elif media_result.media_type == "video" and self.media_analyzer:
                 try:
                     console.print(f"[cyan]Analyzing video from {prospect.name}...[/cyan]")
-                    analyzed_text = await self.media_analyzer.analyze_video(self.client, event.message)
-                    message_text = analyzed_text if analyzed_text else "[Видео]"
-                    if self.transcription_cache and analyzed_text:
-                        self.transcription_cache.store(
-                            chat_id=sender_id, message_id=event.id,
-                            media_type="video", transcription=analyzed_text,
-                        )
-                    console.print(f"[green]Video transcribed:[/green] {message_text[:100]}")
+                    analysis = await self.media_analyzer.analyze_video(self.client, event.message)
+                    message_text = analysis.text if not message_text else f"{message_text}\n{analysis.text}"
+                    console.print(f"[green]Video analyzed:[/green] {analysis.text[:100]}")
                 except Exception as e:
                     console.print(f"[yellow]Video analysis failed: {e}[/yellow]")
-                    message_text = "[Видео]"
+                    if not message_text:
+                        message_text = "[Видео]"
 
-            # Handle video_note (circle) - extract audio + transcribe + cache
-            elif media_result.media_type == "video_note" and self.media_analyzer and self.media_analyzer.transcription_enabled:
+            # Handle video note (circle message) - audio + visual
+            elif media_result.media_type == "video_note" and self.media_analyzer:
                 try:
-                    console.print(f"[cyan]Transcribing video note from {prospect.name}...[/cyan]")
-                    analyzed_text = await self.media_analyzer.analyze_video_note(self.client, event.message)
-                    message_text = analyzed_text if analyzed_text else "[Кругляш]"
-                    if self.transcription_cache and analyzed_text:
-                        self.transcription_cache.store(
-                            chat_id=sender_id, message_id=event.id,
-                            media_type="video_note", transcription=analyzed_text,
-                        )
-                    console.print(f"[green]Video note transcribed:[/green] {message_text[:100]}")
+                    console.print(f"[cyan]Analyzing video note from {prospect.name}...[/cyan]")
+                    analysis = await self.media_analyzer.analyze_video_note(self.client, event.message)
+                    message_text = analysis.text if not message_text else f"{message_text}\n{analysis.text}"
+                    console.print(f"[green]Video note analyzed:[/green] {analysis.text[:100]}")
                 except Exception as e:
-                    console.print(f"[yellow]Video note transcription failed: {e}[/yellow]")
-                    message_text = "[Кругляш]"
+                    console.print(f"[yellow]Video note analysis failed: {e}[/yellow]")
+                    if not message_text:
+                        message_text = "[Кругляш]"
 
-            # Handle other media types (sticker, document, etc.) - placeholders
+            # Handle audio files - transcribe like voice (ElevenLabs or Gemini)
+            elif media_result.media_type == "audio" and self.media_analyzer and self.media_analyzer.enabled:
+                try:
+                    console.print(f"[cyan]Transcribing audio from {prospect.name}...[/cyan]")
+                    analysis = await self.media_analyzer.analyze_audio(self.client, event.message)
+                    message_text = analysis.text if not message_text else f"{message_text}\n{analysis.text}"
+                    console.print(f"[green]Audio transcribed:[/green] {analysis.text[:100]}")
+                except Exception as e:
+                    console.print(f"[yellow]Audio transcription failed: {e}[/yellow]")
+                    if not message_text:
+                        message_text = "[Аудио]"
+
+            # Handle remaining media types (sticker, document, gif, etc.) - placeholders
             elif media_result.has_media and not message_text:
                 if media_result.media_type == "sticker":
                     emoji = media_result.file_name or ""
@@ -980,7 +945,9 @@ class TelegramDaemon:
                 buffered_msg = BufferedMessage(
                     message_id=event.id,
                     text=message_text,
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(),
+                    has_media=media_result.has_media,
+                    media_type=media_result.media_type,
                 )
                 await self.message_buffer.add_message(
                     str(prospect.telegram_id),
@@ -1022,12 +989,8 @@ class TelegramDaemon:
                 console.print(f"[yellow]Outside working hours, skipping[/yellow]")
                 return
 
-            # Get conversation context from Telegram API
-            context = await self.chat_history_fetcher.get_conversation_context(
-                telegram_id=prospect.telegram_id,
-                prospect_name=prospect.name,
-                agent_name=self.config.agent_name,
-            )
+            # Get conversation context
+            context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
             # Simulate reading delay (proportional to incoming message length)
             reading_delay = self.service._calculate_reading_delay(message_text)
@@ -1156,11 +1119,7 @@ class TelegramDaemon:
             try:
                 console.print(f"[cyan]Generating follow-up for {prospect.name}...[/cyan]")
 
-                context = await self.chat_history_fetcher.get_conversation_context(
-                    telegram_id=prospect.telegram_id,
-                    prospect_name=prospect.name,
-                    agent_name=self.config.agent_name,
-                )
+                context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
                 action = await self.agent.generate_follow_up(prospect, context)
                 self._persist_session(prospect)
 
@@ -1230,12 +1189,8 @@ class TelegramDaemon:
             follow_up_intent = action.payload.get("follow_up_intent") or action.payload.get("message_template", "")  # Backward compat
             original_reason = action.payload.get("reason", "scheduled follow-up")
 
-            # Get fresh conversation context from Telegram API
-            context = await self.chat_history_fetcher.get_conversation_context(
-                telegram_id=prospect.telegram_id,
-                prospect_name=prospect.name,
-                agent_name=self.config.agent_name,
-            )
+            # Get fresh conversation context
+            context = self.prospect_manager.get_conversation_context(prospect.telegram_id)
 
             # Generate contextual follow-up with intent guidance
             response = await self.agent.generate_follow_up(
